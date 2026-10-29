@@ -1,6 +1,30 @@
 # cldk
 Cloudogu (LOP) Development Kit helps developers in releasing and developing their Dogu helm-charts.
 
+## Usage
+
+```shell
+cldk version        # print the version and commit of cldk
+cldk -v <command>   # enable debug logging
+cldk --help
+```
+
+## Building
+
+Requirements: GNU make and Docker (the local build runs inside a `golang` container), Go 1.27 for running tests.
+
+```shell
+make                  # builds the static linux/amd64 binary target/cldk
+make unit-test        # runs the unit tests, reports are written to target/unit-tests
+make integration-test # runs the tests tagged with "integration"
+make static-analysis  # runs golangci-lint
+make mocks            # generates mocks with mockery (configured in .mockery.yaml)
+make clean            # removes all build output
+```
+
+The build is based on the [Cloudogu makefiles](https://github.com/cloudogu/makefiles).
+To update them, set `MAKEFILES_VERSION` in the `Makefile` and run `make update-makefiles`.
+
 ## What is the Cloudogu EcoSystem?
 The Cloudogu EcoSystem is an open platform, which lets you choose how and where your team creates great software. Each service or tool is delivered as a Dogu, a Docker container. Each Dogu can easily be integrated in your environment just by pulling it from our registry.
 
