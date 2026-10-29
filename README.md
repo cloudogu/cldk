@@ -4,10 +4,16 @@ Cloudogu (LOP) Development Kit helps developers in releasing and developing thei
 ## Usage
 
 ```shell
+cldk release --namespace <ns> <chart.tgz>   # release a packed dogu chart to registry.cloudogu.com
 cldk version        # print the version and commit of cldk
 cldk -v <command>   # enable debug logging
 cldk --help
 ```
+
+`cldk release` pushes the chart unchanged to `oci://<reg>/<ns>/dogu/v3/charts/<name>:<version>`, name and version are read from `Chart.yaml`.
+Use `--reg` for another target registry, `--plain-http` for registries without TLS and `--insecure` for registries with untrusted (e.g. self-signed) certificates.
+The target registry is accessed with `--user`/`--pass` (or `CLDK_USER`/`CLDK_PASSWORD`) if given, else with the stored credentials of `helm registry login` or `docker login`.
+Credentials are never persisted.
 
 ## Building
 

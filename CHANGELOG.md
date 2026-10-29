@@ -6,4 +6,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
-- [#1] Project setup for the `cldk` CLI with the `version` command and the global `-v/--verbose` flag
+- [#1] `release` command to publish a dogu v3 helm chart and its images to an OCI registry

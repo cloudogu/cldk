@@ -13,6 +13,7 @@ func newVersionCommand(info BuildInfo) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, err := fmt.Fprintf(cmd.OutOrStdout(), "cldk %s (commit %s)\n", info.Version, info.CommitID)
+
 			return err
 		},
 	}
