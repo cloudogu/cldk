@@ -1,0 +1,8 @@
+apiVersion: v2
+name: nexus
+description: Sonatype Nexus Repository Manager as a Cloudogu EcoSystem Dogu (V3)
+type: application
+version: 3.96.4-3
+appVersion: "3.96.4"
+annotations:
+  dogu.cloudogu.com/api-version: v3

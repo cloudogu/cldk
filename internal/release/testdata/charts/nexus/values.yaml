@@ -1,0 +1,18 @@
+nexus:
+  replicas: 1
+  image:
+    registry: registry.cloudogu.com
+    repository: official/nexus
+    tag: 3.96.4-3
+  saManager:
+    image:
+      registry: registry.cloudogu.com
+      repository: k8s/service-account-producer-sidecar
+      tag: "0.1.3"
+
+postgresql:
+  replicas: 1
+  image:
+    registry: docker.io
+    repository: library/postgres
+    tag: "14.18"
