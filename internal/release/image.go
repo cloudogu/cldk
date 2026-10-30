@@ -37,8 +37,10 @@ type image struct {
 	target     name.Tag
 	// desc is the manifest or index of the source, set by resolve.
 	desc *remote.Descriptor
-	// status is the state of the image in the target, set by checkTarget.
-	status Status
+	// status is the state of the image in the target and existingDigest the digest the target already has, both set
+	// by checkTarget.
+	status         Status
+	existingDigest string
 }
 
 // parseImages parses the images as given in Options.Images and computes their targets without accessing a registry.
@@ -168,6 +170,7 @@ func resolveImages(ctx context.Context, images []*image) error {
 }
 
 // checkTarget checks whether the target tag of the image already exists and sets the status of the image.
+// An existing tag with another digest is a conflict unless force allows to overwrite it.
 func (img *image) checkTarget(ctx context.Context, target Target, force bool) error {
 	slog.Debug("checking image target", "target", img.target.String())
 
@@ -180,6 +183,8 @@ func (img *image) checkTarget(ctx context.Context, target Target, force bool) er
 		return fmt.Errorf("failed to check image %s: %w", img.target, err)
 	}
 
+	img.existingDigest = existing.Digest.String()
+
 	if existing.Digest == img.desc.Digest {
 		img.status = StatusSkipped
 
@@ -189,14 +194,24 @@ func (img *image) checkTarget(ctx context.Context, target Target, force bool) er
 	if !force {
 		img.status = StatusConflict
 
-		return fmt.Errorf("image %s already exists with digest %s instead of %s of %s, use --force to overwrite it",
-			img.target, existing.Digest, img.desc.Digest, img.source)
+		return nil
 	}
 
 	slog.Debug("overwriting image", "target", img.target.String(), "digest", existing.Digest.String())
 	img.status = StatusOverwritten
 
 	return nil
+}
+
+// planned describes the image as it would be released to its target.
+func (img *image) planned() PlannedImage {
+	return PlannedImage{
+		Source:         img.source.String(),
+		Reference:      img.target.String(),
+		Digest:         img.desc.Digest.String(),
+		ExistingDigest: img.existingDigest,
+		Status:         img.status,
+	}
 }
 
 // released describes the image as released to its target.

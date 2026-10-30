@@ -11,9 +11,12 @@ import (
 	"github.com/cloudogu/cldk/internal/release"
 )
 
-// newSuccessfulReleaser returns a releaser mock that releases every chart as nexus 3.96.4-3.
+// newSuccessfulReleaser returns a releaser mock that plans and releases every chart as nexus 3.96.4-3.
 func newSuccessfulReleaser() *MockReleaser {
 	return &MockReleaser{
+		PlanFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Plan, error) {
+			return release.Plan{ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3"}, nil
+		},
 		ReleaseFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Result, error) {
 			return release.Result{
 				ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3",
@@ -103,15 +106,18 @@ func TestReleaseCommand(t *testing.T) {
 		assert.Equal(t, release.Options{Force: true}, releaser.ReleaseCalls()[0].Opts)
 	})
 
-	t.Run("passes dry run to the releaser", func(t *testing.T) {
+	t.Run("only plans the release on a dry run", func(t *testing.T) {
 		isolateCredentialEnv(t)
 		releaser := newSuccessfulReleaser()
 
-		_, _, err := runCldk(t, releaser, "release", "--namespace", "testing", "--dry-run", "nexus-3.96.4-3.tgz")
+		_, _, err := runCldk(t, releaser, "release", "--namespace", "testing", "--dry-run", "--force", "nexus-3.96.4-3.tgz")
 
 		require.NoError(t, err)
-		require.Len(t, releaser.ReleaseCalls(), 1)
-		assert.Equal(t, release.Options{DryRun: true}, releaser.ReleaseCalls()[0].Opts)
+		assert.Empty(t, releaser.ReleaseCalls())
+		require.Len(t, releaser.PlanCalls(), 1)
+		assert.Equal(t, "nexus-3.96.4-3.tgz", releaser.PlanCalls()[0].ChartPath)
+		assert.Equal(t, release.Target{Registry: "registry.cloudogu.com", Namespace: "testing"}, releaser.PlanCalls()[0].Target)
+		assert.Equal(t, release.Options{Force: true}, releaser.PlanCalls()[0].Opts)
 	})
 
 	t.Run("marks overwritten images and charts", func(t *testing.T) {
@@ -294,24 +300,32 @@ func TestReleaseCommandCredentials(t *testing.T) {
 	})
 }
 
-// dryRunResult is the plan of a dry run with an image in each status.
-var dryRunResult = release.Result{
-	DryRun: true,
-	Images: []release.ReleasedImage{
+// dryRunPlan is the plan of a dry run with an image in each status.
+var dryRunPlan = release.Plan{
+	Images: []release.PlannedImage{
 		{Source: "ci.example.com/nexus:3.96.4-3", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3", Digest: "sha256:abcd"},
-		{Source: "ci.example.com/postgres:14.18", Reference: "registry.cloudogu.com/testing/dogu/v3/images/postgres:14.18", Digest: "sha256:ef01", Status: release.StatusSkipped},
-		{Source: "ci.example.com/sa-producer:0.2.0", Reference: "registry.cloudogu.com/testing/dogu/v3/images/sa-producer:0.2.0", Digest: "sha256:2345", Status: release.StatusOverwritten},
-		{Source: "ci.example.com/usermgt:1.20.0-1", Reference: "registry.cloudogu.com/testing/dogu/v3/images/usermgt:1.20.0-1", Digest: "sha256:6789", Status: release.StatusConflict},
+		{Source: "ci.example.com/postgres:14.18", Reference: "registry.cloudogu.com/testing/dogu/v3/images/postgres:14.18", Digest: "sha256:ef01", ExistingDigest: "sha256:ef01", Status: release.StatusSkipped},
+		{Source: "ci.example.com/sa-producer:0.2.0", Reference: "registry.cloudogu.com/testing/dogu/v3/images/sa-producer:0.2.0", Digest: "sha256:2345", ExistingDigest: "sha256:aaaa", Status: release.StatusOverwritten},
+		{Source: "ci.example.com/usermgt:1.20.0-1", Reference: "registry.cloudogu.com/testing/dogu/v3/images/usermgt:1.20.0-1", Digest: "sha256:6789", ExistingDigest: "sha256:bbbb", Status: release.StatusConflict},
 	},
 	ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3",
 }
 
-// dryRunOutput is the output of dryRunResult without the chart.
+// dryRunOutput is the output of dryRunPlan without the chart.
 const dryRunOutput = "Dry run, nothing has been pushed.\n" +
 	"Would push image ci.example.com/nexus:3.96.4-3 -> registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3@sha256:abcd\n" +
 	"Would skip image ci.example.com/postgres:14.18 -> registry.cloudogu.com/testing/dogu/v3/images/postgres:14.18@sha256:ef01 (already released)\n" +
 	"Would overwrite image ci.example.com/sa-producer:0.2.0 -> registry.cloudogu.com/testing/dogu/v3/images/sa-producer:0.2.0@sha256:2345\n" +
 	"Conflict for image ci.example.com/usermgt:1.20.0-1 -> registry.cloudogu.com/testing/dogu/v3/images/usermgt:1.20.0-1@sha256:6789 (exists with another digest)\n"
+
+// newPlanningReleaser returns a releaser mock that plans the given plan.
+func newPlanningReleaser(plan release.Plan, err error) *MockReleaser {
+	return &MockReleaser{
+		PlanFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Plan, error) {
+			return plan, err
+		},
+	}
+}
 
 func TestReleaseCommandDryRun(t *testing.T) {
 	tests := []struct {
@@ -327,33 +341,48 @@ func TestReleaseCommandDryRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run("prints the plan with a "+tt.name, func(t *testing.T) {
 			isolateCredentialEnv(t)
-			result := dryRunResult
-			result.ChartStatus = tt.chartStatus
-			releaser := &MockReleaser{
-				ReleaseFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Result, error) {
-					return result, nil
-				},
-			}
+			plan := dryRunPlan
+			plan.ChartStatus = tt.chartStatus
 
-			stdout, _, err := runCldk(t, releaser, "release", "--namespace", "testing", "--dry-run", "nexus-3.96.4-3.tgz")
+			stdout, _, _ := runCldk(t, newPlanningReleaser(plan, nil), "release", "--namespace", "testing", "--dry-run", "nexus-3.96.4-3.tgz")
 
-			require.NoError(t, err)
 			assert.Equal(t, dryRunOutput+tt.chartOutput, stdout)
 		})
 	}
 
-	t.Run("prints the plan and returns the error of the releaser", func(t *testing.T) {
+	t.Run("prints the plan and fails with all conflicts", func(t *testing.T) {
 		isolateCredentialEnv(t)
-		releaser := &MockReleaser{
-			ReleaseFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Result, error) {
-				return dryRunResult, errors.New("image already exists with another digest")
-			},
-		}
+		plan := dryRunPlan
+		plan.ChartStatus = release.StatusConflict
 
-		stdout, _, err := runCldk(t, releaser, "release", "--namespace", "testing", "--dry-run", "nexus-3.96.4-3.tgz")
+		stdout, _, err := runCldk(t, newPlanningReleaser(plan, nil), "release", "--namespace", "testing", "--dry-run", "nexus-3.96.4-3.tgz")
 
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "image already exists with another digest")
-		assert.Equal(t, dryRunOutput+"Would release chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3\n", stdout)
+		assert.Contains(t, err.Error(), "image registry.cloudogu.com/testing/dogu/v3/images/usermgt:1.20.0-1 already exists with digest sha256:bbbb")
+		assert.Contains(t, err.Error(), "chart registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3 is already released")
+		assert.Equal(t, dryRunOutput+"Conflict for chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3 (already released)\n", stdout)
+	})
+
+	t.Run("succeeds without conflicts", func(t *testing.T) {
+		isolateCredentialEnv(t)
+		plan := release.Plan{
+			Images:         dryRunPlan.Images[:3],
+			ChartReference: dryRunPlan.ChartReference,
+		}
+
+		_, _, err := runCldk(t, newPlanningReleaser(plan, nil), "release", "--namespace", "testing", "--dry-run", "nexus-3.96.4-3.tgz")
+
+		require.NoError(t, err)
+	})
+
+	t.Run("returns the error of the releaser without a plan", func(t *testing.T) {
+		isolateCredentialEnv(t)
+
+		stdout, _, err := runCldk(t, newPlanningReleaser(release.Plan{}, errors.New("registry unavailable")),
+			"release", "--namespace", "testing", "--dry-run", "nexus-3.96.4-3.tgz")
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "registry unavailable")
+		assert.Empty(t, stdout)
 	})
 }

@@ -21,6 +21,9 @@ var _ Releaser = &MockReleaser{}
 //
 //		// make and configure a mocked Releaser
 //		mockedReleaser := &MockReleaser{
+//			PlanFunc: func(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Plan, error) {
+//				panic("mock out the Plan method")
+//			},
 //			ReleaseFunc: func(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Result, error) {
 //				panic("mock out the Release method")
 //			},
@@ -31,11 +34,25 @@ var _ Releaser = &MockReleaser{}
 //
 //	}
 type MockReleaser struct {
+	// PlanFunc mocks the Plan method.
+	PlanFunc func(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Plan, error)
+
 	// ReleaseFunc mocks the Release method.
 	ReleaseFunc func(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Result, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// Plan holds details about calls to the Plan method.
+		Plan []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// ChartPath is the chartPath argument value.
+			ChartPath string
+			// Target is the target argument value.
+			Target release.Target
+			// Opts is the opts argument value.
+			Opts release.Options
+		}
 		// Release holds details about calls to the Release method.
 		Release []struct {
 			// Ctx is the ctx argument value.
@@ -48,7 +65,52 @@ type MockReleaser struct {
 			Opts release.Options
 		}
 	}
+	lockPlan    sync.RWMutex
 	lockRelease sync.RWMutex
+}
+
+// Plan calls PlanFunc.
+func (mock *MockReleaser) Plan(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Plan, error) {
+	if mock.PlanFunc == nil {
+		panic("MockReleaser.PlanFunc: method is nil but Releaser.Plan was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		ChartPath string
+		Target    release.Target
+		Opts      release.Options
+	}{
+		Ctx:       ctx,
+		ChartPath: chartPath,
+		Target:    target,
+		Opts:      opts,
+	}
+	mock.lockPlan.Lock()
+	mock.calls.Plan = append(mock.calls.Plan, callInfo)
+	mock.lockPlan.Unlock()
+	return mock.PlanFunc(ctx, chartPath, target, opts)
+}
+
+// PlanCalls gets all the calls that were made to Plan.
+// Check the length with:
+//
+//	len(mockedReleaser.PlanCalls())
+func (mock *MockReleaser) PlanCalls() []struct {
+	Ctx       context.Context
+	ChartPath string
+	Target    release.Target
+	Opts      release.Options
+} {
+	var calls []struct {
+		Ctx       context.Context
+		ChartPath string
+		Target    release.Target
+		Opts      release.Options
+	}
+	mock.lockPlan.RLock()
+	calls = mock.calls.Plan
+	mock.lockPlan.RUnlock()
+	return calls
 }
 
 // Release calls ReleaseFunc.

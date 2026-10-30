@@ -48,7 +48,7 @@ func newChartClient(target Target) (*registry.Client, error) {
 }
 
 // checkChartTarget returns the status the chart gets in the target.
-// It fails if the chart version is already released, unless force allows to overwrite it.
+// An already released chart version is a conflict unless force allows to overwrite it.
 // The digests are not compared, because rewriting and packing the chart changes its digest.
 func checkChartTarget(client *registry.Client, ref string, force bool) (Status, error) {
 	slog.Debug("checking chart target", "target", ref)
@@ -63,7 +63,7 @@ func checkChartTarget(client *registry.Client, ref string, force bool) (Status, 
 	}
 
 	if !force {
-		return StatusConflict, fmt.Errorf("chart %s is already released, use --force to overwrite it", ref)
+		return StatusConflict, nil
 	}
 
 	slog.Debug("overwriting chart", "target", ref, "digest", existing.Digest.String())

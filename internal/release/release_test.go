@@ -956,7 +956,7 @@ func copyImage(t *testing.T, source, target string) {
 	require.NoError(t, remote.Write(targetRef, img))
 }
 
-func TestReleaseDryRun(t *testing.T) {
+func TestPlan(t *testing.T) {
 	t.Run("pushes nothing and returns the plan", func(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
@@ -964,30 +964,30 @@ func TestReleaseDryRun(t *testing.T) {
 		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
 		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
 
-		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
-			Options{Images: []string{nexus, postgres}, DryRun: true})
+		plan, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg),
+			Options{Images: []string{nexus, postgres}})
 
 		require.NoError(t, err)
 		assertRegistryEmpty(t, reg)
-		assert.Equal(t, Result{
-			DryRun: true,
-			Images: []ReleasedImage{
+		assert.Equal(t, Plan{
+			Images: []PlannedImage{
 				{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest},
 				{Source: postgres, Reference: reg + "/testing/dogu/v3/images/postgres:14.18", Digest: postgresDigest},
 			},
 			ChartReference: reg + chartReference,
-		}, result)
+		}, plan)
+		assert.NoError(t, plan.Conflicts())
 	})
 
 	t.Run("pushes nothing and returns the plan without images", func(t *testing.T) {
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
 
-		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{DryRun: true})
+		plan, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg), Options{})
 
 		require.NoError(t, err)
 		assertRegistryEmpty(t, reg)
-		assert.Equal(t, Result{DryRun: true, Images: []ReleasedImage{}, ChartReference: reg + chartReference}, result)
+		assert.Equal(t, Plan{Images: []PlannedImage{}, ChartReference: reg + chartReference}, plan)
 	})
 
 	t.Run("fails without a plan if a target cannot be checked", func(t *testing.T) {
@@ -1007,15 +1007,14 @@ func TestReleaseDryRun(t *testing.T) {
 		chartPath, _ := packChart(t, "nexus")
 		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
 
-		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
-			Options{Images: []string{nexus}, DryRun: true})
+		plan, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus}})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to check image "+reg+"/testing/dogu/v3/images/nexus:3.96.4-3")
-		assert.Equal(t, Result{}, result)
+		assert.Equal(t, Plan{}, plan)
 	})
 
-	t.Run("returns the plan with all conflicts and fails", func(t *testing.T) {
+	t.Run("returns the plan with all conflicts", func(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
@@ -1028,18 +1027,19 @@ func TestReleaseDryRun(t *testing.T) {
 		require.NoError(t, err)
 		chartDigest := imageDigest(t, reg+chartReference)
 
-		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
-			Options{Images: []string{nexus, postgres}, DryRun: true})
+		plan, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg),
+			Options{Images: []string{nexus, postgres}})
 
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "image "+reg+"/testing/dogu/v3/images/postgres:14.18 already exists with digest "+otherDigest)
-		assert.Contains(t, err.Error(), "chart "+reg+chartReference+" is already released")
-		assert.True(t, result.DryRun)
-		assert.Equal(t, []ReleasedImage{
-			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest, Status: StatusSkipped},
-			{Source: postgres, Reference: reg + "/testing/dogu/v3/images/postgres:14.18", Digest: postgresDigest, Status: StatusConflict},
-		}, result.Images)
-		assert.Equal(t, StatusConflict, result.ChartStatus)
+		require.NoError(t, err)
+		assert.Equal(t, []PlannedImage{
+			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest, ExistingDigest: nexusDigest, Status: StatusSkipped},
+			{Source: postgres, Reference: reg + "/testing/dogu/v3/images/postgres:14.18", Digest: postgresDigest, ExistingDigest: otherDigest, Status: StatusConflict},
+		}, plan.Images)
+		assert.Equal(t, StatusConflict, plan.ChartStatus)
+		conflicts := plan.Conflicts()
+		require.Error(t, conflicts)
+		assert.Contains(t, conflicts.Error(), "image "+reg+"/testing/dogu/v3/images/postgres:14.18 already exists with digest "+otherDigest)
+		assert.Contains(t, conflicts.Error(), "chart "+reg+chartReference+" is already released")
 		assert.Equal(t, otherDigest, imageDigest(t, reg+"/testing/dogu/v3/images/postgres:14.18"))
 		assert.Equal(t, chartDigest, imageDigest(t, reg+chartReference))
 	})
@@ -1055,13 +1055,14 @@ func TestReleaseDryRun(t *testing.T) {
 		require.NoError(t, err)
 		chartDigest := imageDigest(t, reg+chartReference)
 
-		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
-			Options{Images: []string{nexus}, Force: true, DryRun: true})
+		plan, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg),
+			Options{Images: []string{nexus}, Force: true})
 
 		require.NoError(t, err)
-		require.Len(t, result.Images, 1)
-		assert.Equal(t, StatusOverwritten, result.Images[0].Status)
-		assert.Equal(t, StatusOverwritten, result.ChartStatus)
+		require.Len(t, plan.Images, 1)
+		assert.Equal(t, StatusOverwritten, plan.Images[0].Status)
+		assert.Equal(t, StatusOverwritten, plan.ChartStatus)
+		assert.NoError(t, plan.Conflicts())
 		assert.Equal(t, otherDigest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3"))
 		assert.Equal(t, chartDigest, imageDigest(t, reg+chartReference))
 	})
@@ -1072,8 +1073,7 @@ func TestReleaseDryRun(t *testing.T) {
 		chartPath, _ := packChart(t, "nexus")
 		usermgt, _ := newSourceImage(t, src, "ci/usermgt:1.20.0-1")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
-			Options{Images: []string{usermgt}, DryRun: true})
+		_, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg), Options{Images: []string{usermgt}})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), `no entry in values.images of mirror-patch-tpl.yaml has the repository name "usermgt"`)
@@ -1086,8 +1086,7 @@ func TestReleaseDryRun(t *testing.T) {
 		chartPath, _ := packChart(t, "redmine-prerelease")
 		redmine, _ := newSourceImage(t, src, "ci/redmine:6.1.2-dev.1")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
-			Options{Images: []string{redmine}, DryRun: true})
+		_, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg), Options{Images: []string{redmine}})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "chart has no mirror-patch-tpl.yaml")
