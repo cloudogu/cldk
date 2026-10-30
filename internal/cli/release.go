@@ -49,8 +49,13 @@ func newReleaseCommand(releaser Releaser) *cobra.Command {
 			}
 
 			result, err := releaser.Release(cmd.Context(), args[0], target, opts)
-			if err != nil {
+			if err != nil && !result.DryRun {
 				return err
+			}
+
+			// A dry run also returns its plan on conflicts, so that all of them show up at once.
+			if result.DryRun {
+				return errors.Join(printPlan(cmd.OutOrStdout(), result), err)
 			}
 
 			return printResult(cmd.OutOrStdout(), result)
@@ -60,6 +65,7 @@ func newReleaseCommand(releaser Releaser) *cobra.Command {
 	cmd.Flags().StringArrayVarP(&opts.Images, "image", "i", nil, "image to release with the chart as <ref>[=<name>:<tag>] (repeatable), e.g. ci-registry.example.com/nexus:3.96.4-3 or localhost:5001/local-dev/nexus/main:3.96.4-3=nexus:3.96.4-3")
 	cmd.Flags().StringArrayVar(&opts.ImageKeys, "image-key", nil, "assign an image to values.images.<key> in mirror-patch-tpl.yaml as <name>=<key> (repeatable), e.g. nexus=nexus")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "overwrite image tags with another digest and an already released chart version in the target registry")
+	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "check the release and print the plan without pushing anything")
 	cmd.Flags().StringVar(&target.Registry, "reg", "registry.cloudogu.com", "target registry")
 	cmd.Flags().StringVar(&target.Namespace, "namespace", "", "target namespace in the registry (required)")
 	_ = cmd.MarkFlagRequired("namespace")
@@ -75,8 +81,12 @@ func newReleaseCommand(releaser Releaser) *cobra.Command {
 func printResult(out io.Writer, result release.Result) error {
 	for _, img := range result.Images {
 		format := "Released image %s -> %s@%s\n"
-		if img.Skipped {
+
+		switch img.Status {
+		case release.StatusSkipped:
 			format = "Skipped image %s -> %s@%s (already released)\n"
+		case release.StatusOverwritten:
+			format = "Released image %s -> %s@%s (overwritten)\n"
 		}
 
 		if _, err := fmt.Fprintf(out, format, img.Source, img.Reference, img.Digest); err != nil {
@@ -84,7 +94,50 @@ func printResult(out io.Writer, result release.Result) error {
 		}
 	}
 
-	_, err := fmt.Fprintf(out, "Released chart oci://%s@%s\n", result.ChartReference, result.ChartDigest)
+	format := "Released chart oci://%s@%s\n"
+
+	if result.ChartStatus == release.StatusOverwritten {
+		format = "Released chart oci://%s@%s (overwritten)\n"
+	}
+
+	_, err := fmt.Fprintf(out, format, result.ChartReference, result.ChartDigest)
+
+	return err
+}
+
+// printPlan prints what a dry run would release: the images and the chart.
+func printPlan(out io.Writer, result release.Result) error {
+	if _, err := fmt.Fprintln(out, "Dry run, nothing has been pushed."); err != nil {
+		return err
+	}
+
+	for _, img := range result.Images {
+		format := "Would push image %s -> %s@%s\n"
+
+		switch img.Status {
+		case release.StatusSkipped:
+			format = "Would skip image %s -> %s@%s (already released)\n"
+		case release.StatusOverwritten:
+			format = "Would overwrite image %s -> %s@%s\n"
+		case release.StatusConflict:
+			format = "Conflict for image %s -> %s@%s (exists with another digest)\n"
+		}
+
+		if _, err := fmt.Fprintf(out, format, img.Source, img.Reference, img.Digest); err != nil {
+			return err
+		}
+	}
+
+	format := "Would release chart oci://%s\n"
+
+	switch result.ChartStatus {
+	case release.StatusOverwritten:
+		format = "Would overwrite chart oci://%s\n"
+	case release.StatusConflict:
+		format = "Conflict for chart oci://%s (already released)\n"
+	}
+
+	_, err := fmt.Fprintf(out, format, result.ChartReference)
 
 	return err
 }

@@ -25,8 +25,8 @@ type ReleasedImage struct {
 	Reference string
 	// Digest is the digest of the released manifest or index, which equals the digest of the source.
 	Digest string
-	// Skipped is true if the target already had the image with the same digest, so that it has not been pushed again.
-	Skipped bool
+	// Status is the state of the image in the target.
+	Status Status
 }
 
 // image is an image to release.
@@ -37,8 +37,8 @@ type image struct {
 	target     name.Tag
 	// desc is the manifest or index of the source, set by resolve.
 	desc *remote.Descriptor
-	// released is true if the target already has the image with the same digest, set by checkTarget.
-	released bool
+	// status is the state of the image in the target, set by checkTarget.
+	status Status
 }
 
 // parseImages parses the images as given in Options.Images and computes their targets without accessing a registry.
@@ -167,7 +167,7 @@ func resolveImages(ctx context.Context, images []*image) error {
 	return nil
 }
 
-// checkTarget checks whether the target tag of the image already exists.
+// checkTarget checks whether the target tag of the image already exists and sets the status of the image.
 func (img *image) checkTarget(ctx context.Context, target Target, force bool) error {
 	slog.Debug("checking image target", "target", img.target.String())
 
@@ -181,28 +181,40 @@ func (img *image) checkTarget(ctx context.Context, target Target, force bool) er
 	}
 
 	if existing.Digest == img.desc.Digest {
-		img.released = true
+		img.status = StatusSkipped
 
 		return nil
 	}
 
 	if !force {
+		img.status = StatusConflict
+
 		return fmt.Errorf("image %s already exists with digest %s instead of %s of %s, use --force to overwrite it",
 			img.target, existing.Digest, img.desc.Digest, img.source)
 	}
 
 	slog.Debug("overwriting image", "target", img.target.String(), "digest", existing.Digest.String())
+	img.status = StatusOverwritten
 
 	return nil
 }
 
+// released describes the image as released to its target.
+func (img *image) released() ReleasedImage {
+	return ReleasedImage{
+		Source:    img.source.String(),
+		Reference: img.target.String(),
+		Digest:    img.desc.Digest.String(),
+		Status:    img.status,
+	}
+}
+
 // push copies the manifest or index of the image unchanged to its target, unless the target already has it.
 func (img *image) push(ctx context.Context, target Target) (ReleasedImage, error) {
-	released := ReleasedImage{Source: img.source.String(), Reference: img.target.String(), Digest: img.desc.Digest.String()}
+	released := img.released()
 
-	if img.released {
+	if released.Status == StatusSkipped {
 		slog.Debug("skipping already released image", "source", img.source.String(), "target", img.target.String())
-		released.Skipped = true
 
 		return released, nil
 	}

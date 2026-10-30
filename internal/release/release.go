@@ -3,6 +3,7 @@ package release
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -24,16 +25,38 @@ type Options struct {
 	// Force overwrites image tags with another digest and an already released chart version in the target.
 	// Without it, both abort the release before anything is pushed.
 	Force bool
+	// DryRun computes the complete release including all checks of the sources and targets, but pushes nothing.
+	DryRun bool
 }
 
-// Result describes what has been released.
+// Status is the state of a released image or chart in the target.
+type Status int
+
+const (
+	// StatusPushed means the target did not exist and has been pushed or, in a dry run, would be pushed.
+	StatusPushed Status = iota
+	// StatusSkipped means the target already had the image with the same digest, so that it has not been pushed again.
+	StatusSkipped
+	// StatusOverwritten means the target already existed with other content and has been overwritten (Options.Force).
+	StatusOverwritten
+	// StatusConflict means the target already exists with other content, so that it cannot be released without
+	// Options.Force. Only a dry run returns it, together with the error.
+	StatusConflict
+)
+
+// Result describes what has been released or, in a dry run, what would be released.
 type Result struct {
+	// DryRun is true if nothing has been pushed, see Options.DryRun.
+	DryRun bool
 	// Images are the released images in the order of Options.Images.
 	Images []ReleasedImage
 	// ChartReference is the full reference of the released chart without scheme, e.g.
 	// "registry.cloudogu.com/official/dogu/v3/charts/nexus:3.96.4-3".
 	ChartReference string
-	// ChartDigest is the manifest digest of the released chart.
+	// ChartStatus is the state of the chart in the target. A chart is never skipped.
+	ChartStatus Status
+	// ChartDigest is the manifest digest of the released chart. It is empty in a dry run, because helm computes it
+	// only while pushing.
 	ChartDigest string
 }
 
@@ -87,11 +110,23 @@ func (r *Releaser) Release(ctx context.Context, chartPath string, target Target,
 	ref := target.chartRepository(meta.Name) + ":" + meta.Version
 
 	// All targets are checked before the first push, so that a conflict does not leave a partial release.
-	if err = checkTargets(ctx, images, client, ref, target, opts.Force); err != nil {
+	chartStatus, conflicts, err := checkTargets(ctx, images, client, ref, target, opts.Force)
+	if err != nil {
 		return Result{}, err
 	}
 
-	var result Result
+	result := Result{ChartReference: ref, ChartStatus: chartStatus}
+
+	if opts.DryRun {
+		result.DryRun = true
+		result.Images = planImages(images)
+
+		return result, conflicts
+	}
+
+	if conflicts != nil {
+		return Result{}, conflicts
+	}
 
 	result.Images, err = pushImages(ctx, images, target)
 	if err != nil {
@@ -105,21 +140,41 @@ func (r *Releaser) Release(ctx context.Context, chartPath string, target Target,
 		return Result{}, fmt.Errorf("failed to push chart to %s: %w", ref, err)
 	}
 
-	result.ChartReference = ref
 	result.ChartDigest = pushed.Manifest.Digest
 
 	return result, nil
 }
 
-// checkTargets checks the targets of all images and of the chart.
-func checkTargets(ctx context.Context, images []*image, client *registry.Client, chartRef string, target Target, force bool) error {
+// checkTargets checks the targets of all images and of the chart and returns the status of the chart.
+func checkTargets(ctx context.Context, images []*image, client *registry.Client, chartRef string, target Target, force bool) (chartStatus Status, conflicts, err error) {
+	var errs []error
+
 	for _, img := range images {
-		if err := img.checkTarget(ctx, target, force); err != nil {
-			return err
+		err = img.checkTarget(ctx, target, force)
+		if err != nil && img.status != StatusConflict {
+			return chartStatus, nil, err
 		}
+
+		errs = append(errs, err)
 	}
 
-	return checkChartTarget(client, chartRef, force)
+	chartStatus, err = checkChartTarget(client, chartRef, force)
+	if err != nil && chartStatus != StatusConflict {
+		return chartStatus, nil, err
+	}
+
+	return chartStatus, errors.Join(append(errs, err)...), nil
+}
+
+// planImages returns the images as they would be released.
+func planImages(images []*image) []ReleasedImage {
+	planned := make([]ReleasedImage, 0, len(images))
+
+	for _, img := range images {
+		planned = append(planned, img.released())
+	}
+
+	return planned
 }
 
 // pushImages pushes the images in their order and returns them as released.

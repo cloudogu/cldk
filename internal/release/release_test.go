@@ -811,7 +811,7 @@ func TestReleaseExistingImages(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, []ReleasedImage{
-			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest, Skipped: true},
+			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest, Status: StatusSkipped},
 			{Source: postgres, Reference: reg + "/testing/dogu/v3/images/postgres:14.18", Digest: postgresDigest},
 		}, result.Images)
 		assert.Equal(t, postgresDigest, imageDigest(t, reg+"/testing/dogu/v3/images/postgres:14.18"))
@@ -850,7 +850,7 @@ func TestReleaseExistingImages(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, nexusDigest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3"))
 		assert.Equal(t, []ReleasedImage{
-			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest},
+			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest, Status: StatusOverwritten},
 		}, result.Images)
 	})
 
@@ -885,8 +885,8 @@ func TestReleaseExistingImages(t *testing.T) {
 		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), opts)
 
 		require.NoError(t, err)
-		assert.True(t, result.Images[0].Skipped)
-		assert.False(t, result.Images[1].Skipped)
+		assert.Equal(t, StatusSkipped, result.Images[0].Status)
+		assert.Equal(t, StatusPushed, result.Images[1].Status)
 		assert.Equal(t, postgresDigest, imageDigest(t, reg+"/testing/dogu/v3/images/postgres:14.18"))
 		assert.Equal(t, imageDigest(t, reg+chartReference), result.ChartDigest)
 	})
@@ -933,6 +933,7 @@ func TestReleaseExistingChart(t *testing.T) {
 			Options{Images: []string{nexus}, Force: true})
 
 		require.NoError(t, err)
+		assert.Equal(t, StatusOverwritten, result.ChartStatus)
 		assert.Equal(t, imageDigest(t, reg+chartReference), result.ChartDigest)
 
 		images := chartYAML(t, pullReleasedChart(t, reg), mirrorPatchTemplateFile)["values"].(map[string]any)["images"]
@@ -953,4 +954,143 @@ func copyImage(t *testing.T, source, target string) {
 	targetRef, err := name.ParseReference(target)
 	require.NoError(t, err)
 	require.NoError(t, remote.Write(targetRef, img))
+}
+
+func TestReleaseDryRun(t *testing.T) {
+	t.Run("pushes nothing and returns the plan", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
+
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
+			Options{Images: []string{nexus, postgres}, DryRun: true})
+
+		require.NoError(t, err)
+		assertRegistryEmpty(t, reg)
+		assert.Equal(t, Result{
+			DryRun: true,
+			Images: []ReleasedImage{
+				{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest},
+				{Source: postgres, Reference: reg + "/testing/dogu/v3/images/postgres:14.18", Digest: postgresDigest},
+			},
+			ChartReference: reg + chartReference,
+		}, result)
+	})
+
+	t.Run("pushes nothing and returns the plan without images", func(t *testing.T) {
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{DryRun: true})
+
+		require.NoError(t, err)
+		assertRegistryEmpty(t, reg)
+		assert.Equal(t, Result{DryRun: true, Images: []ReleasedImage{}, ChartReference: reg + chartReference}, result)
+	})
+
+	t.Run("fails without a plan if a target cannot be checked", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		handler := newRegistryHandler()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/dogu/v3/images/") {
+				w.WriteHeader(http.StatusForbidden)
+
+				return
+			}
+
+			handler.ServeHTTP(w, r)
+		}))
+		t.Cleanup(srv.Close)
+		reg := strings.TrimPrefix(srv.URL, "http://")
+		chartPath, _ := packChart(t, "nexus")
+		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
+			Options{Images: []string{nexus}, DryRun: true})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to check image "+reg+"/testing/dogu/v3/images/nexus:3.96.4-3")
+		assert.Equal(t, Result{}, result)
+	})
+
+	t.Run("returns the plan with all conflicts and fails", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
+		copyImage(t, nexus, reg+"/testing/dogu/v3/images/nexus:3.96.4-3")
+		otherDigest := pushImage(t, reg+"/testing/dogu/v3/images/postgres:14.18")
+
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		require.NoError(t, err)
+		chartDigest := imageDigest(t, reg+chartReference)
+
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
+			Options{Images: []string{nexus, postgres}, DryRun: true})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "image "+reg+"/testing/dogu/v3/images/postgres:14.18 already exists with digest "+otherDigest)
+		assert.Contains(t, err.Error(), "chart "+reg+chartReference+" is already released")
+		assert.True(t, result.DryRun)
+		assert.Equal(t, []ReleasedImage{
+			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest, Status: StatusSkipped},
+			{Source: postgres, Reference: reg + "/testing/dogu/v3/images/postgres:14.18", Digest: postgresDigest, Status: StatusConflict},
+		}, result.Images)
+		assert.Equal(t, StatusConflict, result.ChartStatus)
+		assert.Equal(t, otherDigest, imageDigest(t, reg+"/testing/dogu/v3/images/postgres:14.18"))
+		assert.Equal(t, chartDigest, imageDigest(t, reg+chartReference))
+	})
+
+	t.Run("with Force plans to overwrite existing targets", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		otherDigest := pushImage(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3")
+
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		require.NoError(t, err)
+		chartDigest := imageDigest(t, reg+chartReference)
+
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
+			Options{Images: []string{nexus}, Force: true, DryRun: true})
+
+		require.NoError(t, err)
+		require.Len(t, result.Images, 1)
+		assert.Equal(t, StatusOverwritten, result.Images[0].Status)
+		assert.Equal(t, StatusOverwritten, result.ChartStatus)
+		assert.Equal(t, otherDigest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3"))
+		assert.Equal(t, chartDigest, imageDigest(t, reg+chartReference))
+	})
+
+	t.Run("fails on mapping errors", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		usermgt, _ := newSourceImage(t, src, "ci/usermgt:1.20.0-1")
+
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
+			Options{Images: []string{usermgt}, DryRun: true})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `no entry in values.images of mirror-patch-tpl.yaml has the repository name "usermgt"`)
+		assertRegistryEmpty(t, reg)
+	})
+
+	t.Run("fails if the chart has no mirror patch template", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "redmine-prerelease")
+		redmine, _ := newSourceImage(t, src, "ci/redmine:6.1.2-dev.1")
+
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
+			Options{Images: []string{redmine}, DryRun: true})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "chart has no mirror-patch-tpl.yaml")
+		assertRegistryEmpty(t, reg)
+	})
 }

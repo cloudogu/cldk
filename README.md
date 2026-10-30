@@ -6,6 +6,7 @@ Cloudogu (LOP) Development Kit helps developers in releasing and developing thei
 ```shell
 cldk release --namespace <ns> <chart.tgz>   # release a packed dogu chart to registry.cloudogu.com
 cldk release --namespace <ns> -i <image> ... <chart.tgz>   # release the chart together with its images
+cldk release --dry-run --namespace <ns> -i <image> ... <chart.tgz>   # print the plan without pushing anything
 cldk version        # print the version and commit of cldk
 cldk -v <command>   # enable debug logging
 cldk --help
@@ -26,6 +27,10 @@ cldk --help
   - An image tag that already exists with the same digest is skipped, so a failed release can simply be run again.
   - An image tag with another digest or an already released chart version aborts the release.
   - Use `--force` to overwrite both, e.g. for testing releases.
+- Use `--dry-run` to check a release without pushing anything.
+  - It resolves the images, rewrites the chart locally and checks all targets like a release.
+  - It prints each image with its source, target, digest and whether it would be pushed, skipped, overwritten or conflicts, and the chart target.
+  - Mapping errors and conflicts fail the dry run, too.
 - Use `--reg` for another target registry, `--plain-http` for a target registry without TLS and `--insecure` for a target registry with an untrusted (e.g. self-signed) certificate.
 - The target registry is accessed with `--user`/`--pass` (or `CLDK_USER`/`CLDK_PASSWORD`) if given, else with the stored credentials of `helm registry login` or `docker login`.
 - Credentials are never persisted.
