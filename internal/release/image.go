@@ -29,23 +29,34 @@ type ReleasedImage struct {
 	Status Status
 }
 
-// image is an image to release.
-type image struct {
+// The images pass through the release in phases, each a value of its own: parsed (imageSpec), resolved in the source
+// registry (resolvedImage) and checked against the target (checkedImage).
+
+// imageSpec is an image to release as given in Options.Images, with its target computed.
+type imageSpec struct {
 	source name.Tag
 	// targetName is the name of the image in the target, by default the last path segment of the source repository.
 	targetName string
 	target     name.Tag
-	// desc is the manifest or index of the source, set by resolve.
+}
+
+// resolvedImage is an image whose manifest or index has been resolved in its source registry.
+type resolvedImage struct {
+	imageSpec
 	desc *remote.Descriptor
-	// status is the state of the image in the target and existingDigest the digest the target already has, both set
-	// by checkTarget.
-	status         Status
+}
+
+// checkedImage is a resolved image whose target has been checked.
+type checkedImage struct {
+	resolvedImage
+	status Status
+	// existingDigest is the digest the target already has, empty if the target does not exist.
 	existingDigest string
 }
 
 // parseImages parses the images as given in Options.Images and computes their targets without accessing a registry.
-func parseImages(specs []string, target Target) ([]*image, error) {
-	images := make([]*image, 0, len(specs))
+func parseImages(specs []string, target Target) ([]imageSpec, error) {
+	images := make([]imageSpec, 0, len(specs))
 	sourceByTargetName := map[string]string{}
 
 	for _, spec := range specs {
@@ -66,22 +77,22 @@ func parseImages(specs []string, target Target) ([]*image, error) {
 }
 
 // parseImage parses an image given as "<source>" or "<source>=<target name>:<tag>".
-func parseImage(spec string, target Target) (*image, error) {
+func parseImage(spec string, target Target) (imageSpec, error) {
 	source, explicitTarget, hasExplicitTarget := strings.Cut(spec, "=")
 
 	sourceRef, err := name.ParseReference(source)
 	if err != nil {
-		return nil, fmt.Errorf("invalid image reference %s: %w", source, err)
+		return imageSpec{}, fmt.Errorf("invalid image reference %s: %w", source, err)
 	}
 
 	sourceTag, ok := sourceRef.(name.Tag)
 	if !ok {
-		return nil, fmt.Errorf("image %s has no tag", source)
+		return imageSpec{}, fmt.Errorf("image %s has no tag", source)
 	}
 
 	// Without a registry, the image would silently be pulled from docker.io, which hardly ever is the intended source.
 	if !hasRegistry(source) {
-		return nil, fmt.Errorf("image %s has no registry, give it explicitly, e.g. docker.io/%s:%s",
+		return imageSpec{}, fmt.Errorf("image %s has no registry, give it explicitly, e.g. docker.io/%s:%s",
 			source, sourceTag.RepositoryStr(), sourceTag.TagStr())
 	}
 
@@ -91,16 +102,16 @@ func parseImage(spec string, target Target) (*image, error) {
 	if hasExplicitTarget {
 		targetName, tag, ok = strings.Cut(explicitTarget, ":")
 		if !ok || targetName == "" || tag == "" || strings.Contains(targetName, "/") {
-			return nil, fmt.Errorf("invalid image %s: the target must be given as <name>:<tag>, e.g. %s=nexus:3.96.4-3", spec, source)
+			return imageSpec{}, fmt.Errorf("invalid image %s: the target must be given as <name>:<tag>, e.g. %s=nexus:3.96.4-3", spec, source)
 		}
 	}
 
 	targetTag, err := name.NewTag(target.imageRepository(targetName)+":"+tag, target.nameOptions()...)
 	if err != nil {
-		return nil, fmt.Errorf("invalid target %s:%s for image %s: %w", targetName, tag, source, err)
+		return imageSpec{}, fmt.Errorf("invalid target %s:%s for image %s: %w", targetName, tag, source, err)
 	}
 
-	return &image{source: sourceTag, targetName: targetName, target: targetTag}, nil
+	return imageSpec{source: sourceTag, targetName: targetName, target: targetTag}, nil
 }
 
 // hasRegistry reports whether the image reference starts with a registry. Like docker, it takes the first path segment
@@ -113,7 +124,7 @@ func hasRegistry(ref string) bool {
 
 // parseImageKeys parses the image keys as given in Options.ImageKeys and returns the keys by target name.
 // Each image key must refer to the target name of one of the images.
-func parseImageKeys(specs []string, images []*image) (map[string]string, error) {
+func parseImageKeys(specs []string, images []imageSpec) (map[string]string, error) {
 	targetNames := make([]string, 0, len(images))
 
 	for _, img := range images {
@@ -151,7 +162,9 @@ func parseImageKeys(specs []string, images []*image) (map[string]string, error) 
 
 // resolveImages resolves all images in the registries of their sources.
 // The sources are always accessed with the stored docker credentials and the default transport.
-func resolveImages(ctx context.Context, images []*image) error {
+func resolveImages(ctx context.Context, images []imageSpec) ([]resolvedImage, error) {
+	resolved := make([]resolvedImage, 0, len(images))
+
 	for _, img := range images {
 		slog.Debug("resolving image", "source", img.source.String())
 
@@ -160,51 +173,62 @@ func resolveImages(ctx context.Context, images []*image) error {
 			remote.WithAuthFromKeychain(authn.DefaultKeychain),
 		)
 		if err != nil {
-			return fmt.Errorf("failed to resolve image %s: %w", img.source, err)
+			return nil, fmt.Errorf("failed to resolve image %s: %w", img.source, err)
 		}
 
-		img.desc = desc
+		resolved = append(resolved, resolvedImage{imageSpec: img, desc: desc})
 	}
 
-	return nil
+	return resolved, nil
 }
 
-// checkTarget checks whether the target tag of the image already exists and sets the status of the image.
+// checkImageTargets checks the targets of all images and returns the images with their status.
+func checkImageTargets(ctx context.Context, images []resolvedImage, target Target, force bool) ([]checkedImage, error) {
+	checked := make([]checkedImage, 0, len(images))
+
+	for _, img := range images {
+		c, err := img.checkTarget(ctx, target, force)
+		if err != nil {
+			return nil, err
+		}
+
+		checked = append(checked, c)
+	}
+
+	return checked, nil
+}
+
+// checkTarget checks whether the target tag of the image already exists and returns the image with its status.
 // An existing tag with another digest is a conflict unless force allows to overwrite it.
-func (img *image) checkTarget(ctx context.Context, target Target, force bool) error {
+func (img resolvedImage) checkTarget(ctx context.Context, target Target, force bool) (checkedImage, error) {
 	slog.Debug("checking image target", "target", img.target.String())
 
 	existing, err := remote.Head(img.target, targetOptions(ctx, target)...)
 	if isNotFound(err) {
-		return nil
+		return checkedImage{resolvedImage: img, status: StatusPushed}, nil
 	}
 
 	if err != nil {
-		return fmt.Errorf("failed to check image %s: %w", img.target, err)
+		return checkedImage{}, fmt.Errorf("failed to check image %s: %w", img.target, err)
 	}
 
-	img.existingDigest = existing.Digest.String()
+	checked := checkedImage{resolvedImage: img, existingDigest: existing.Digest.String()}
 
-	if existing.Digest == img.desc.Digest {
-		img.status = StatusSkipped
-
-		return nil
+	switch {
+	case existing.Digest == img.desc.Digest:
+		checked.status = StatusSkipped
+	case !force:
+		checked.status = StatusConflict
+	default:
+		slog.Debug("overwriting image", "target", img.target.String(), "digest", existing.Digest.String())
+		checked.status = StatusOverwritten
 	}
 
-	if !force {
-		img.status = StatusConflict
-
-		return nil
-	}
-
-	slog.Debug("overwriting image", "target", img.target.String(), "digest", existing.Digest.String())
-	img.status = StatusOverwritten
-
-	return nil
+	return checked, nil
 }
 
 // planned describes the image as it would be released to its target.
-func (img *image) planned() PlannedImage {
+func (img checkedImage) planned() PlannedImage {
 	return PlannedImage{
 		Source:         img.source.String(),
 		Reference:      img.target.String(),
@@ -215,7 +239,7 @@ func (img *image) planned() PlannedImage {
 }
 
 // released describes the image as released to its target.
-func (img *image) released() ReleasedImage {
+func (img checkedImage) released() ReleasedImage {
 	return ReleasedImage{
 		Source:    img.source.String(),
 		Reference: img.target.String(),
@@ -225,7 +249,7 @@ func (img *image) released() ReleasedImage {
 }
 
 // push copies the manifest or index of the image unchanged to its target, unless the target already has it.
-func (img *image) push(ctx context.Context, target Target) (ReleasedImage, error) {
+func (img checkedImage) push(ctx context.Context, target Target) (ReleasedImage, error) {
 	released := img.released()
 
 	if released.Status == StatusSkipped {

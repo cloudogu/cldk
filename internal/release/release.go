@@ -139,7 +139,7 @@ func (r *Releaser) Release(ctx context.Context, chartPath string, target Target,
 // releasePlan is a computed release with everything needed to push it.
 type releasePlan struct {
 	target Target
-	images []*image
+	images []checkedImage
 	// archive is the chart archive to push, rewritten to the targets of the images.
 	archive     []byte
 	chartClient *registry.Client
@@ -159,22 +159,23 @@ func newReleasePlan(ctx context.Context, chartPath string, target Target, opts O
 		return nil, fmt.Errorf("%s is not a valid chart archive: %w", chartPath, err)
 	}
 
-	images, err := parseImages(opts.Images, target)
+	specs, err := parseImages(opts.Images, target)
 	if err != nil {
 		return nil, err
 	}
 
-	keys, err := parseImageKeys(opts.ImageKeys, images)
+	keys, err := parseImageKeys(opts.ImageKeys, specs)
 	if err != nil {
 		return nil, err
 	}
 
-	if err = resolveImages(ctx, images); err != nil {
+	resolved, err := resolveImages(ctx, specs)
+	if err != nil {
 		return nil, err
 	}
 
-	if len(images) > 0 {
-		archive, err = rewriteChartForImages(archive, images, keys)
+	if len(specs) > 0 {
+		archive, err = rewriteChartForImages(archive, specs, keys)
 		if err != nil {
 			return nil, fmt.Errorf("failed to rewrite chart %s: %w", chartPath, err)
 		}
@@ -187,10 +188,9 @@ func newReleasePlan(ctx context.Context, chartPath string, target Target, opts O
 
 	ref := target.chartRepository(meta.Name) + ":" + meta.Version
 
-	for _, img := range images {
-		if err = img.checkTarget(ctx, target, opts.Force); err != nil {
-			return nil, err
-		}
+	images, err := checkImageTargets(ctx, resolved, target, opts.Force)
+	if err != nil {
+		return nil, err
 	}
 
 	chartStatus, err := checkChartTarget(client, ref, opts.Force)
@@ -245,7 +245,7 @@ func (p *releasePlan) push(ctx context.Context) (Result, error) {
 }
 
 // rewriteChartForImages points the chart archive to the target references of the images.
-func rewriteChartForImages(archive []byte, images []*image, keys map[string]string) ([]byte, error) {
+func rewriteChartForImages(archive []byte, images []imageSpec, keys map[string]string) ([]byte, error) {
 	targets := make(map[string]string, len(images))
 
 	for _, img := range images {
