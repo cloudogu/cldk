@@ -70,7 +70,7 @@ func TestRewriteChart(t *testing.T) {
 	t.Run("writes the target reference into the image list of the mirror patch template", func(t *testing.T) {
 		_, archive := packChart(t, "nexus")
 
-		rewritten, _, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget})
+		rewritten, _, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget}, nil)
 
 		require.NoError(t, err)
 		assert.Equal(t, map[string]any{
@@ -83,7 +83,7 @@ func TestRewriteChart(t *testing.T) {
 	t.Run("renders the patches with the target reference into values.yaml", func(t *testing.T) {
 		_, archive := packChart(t, "nexus")
 
-		rewritten, _, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget})
+		rewritten, _, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget}, nil)
 
 		require.NoError(t, err)
 		values := chartYAML(t, rewritten, valuesFile)
@@ -117,7 +117,7 @@ func TestRewriteChart(t *testing.T) {
 		_, archive := packChart(t, "nexus")
 		postgresTarget := "registry.example.com/testing/dogu/v3/images/postgres:14.18"
 
-		rewritten, changes, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget, "postgres": postgresTarget})
+		rewritten, changes, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget, "postgres": postgresTarget}, nil)
 
 		require.NoError(t, err)
 		assert.Equal(t, []imageChange{
@@ -132,7 +132,38 @@ func TestRewriteChart(t *testing.T) {
 	t.Run("returns the changed entries of values.images", func(t *testing.T) {
 		_, archive := packChart(t, "nexus")
 
-		_, changes, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget})
+		_, changes, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget}, nil)
+
+		require.NoError(t, err)
+		assert.Equal(t, []imageChange{{Key: "nexus", Old: "registry.cloudogu.com/official/nexus:3.96.4-3", New: nexusTarget}}, changes)
+	})
+
+	t.Run("assigns an image to an explicit key instead of the entry with its name", func(t *testing.T) {
+		_, archive := packChart(t, "nexus")
+		saManagerTarget := "registry.example.com/testing/dogu/v3/images/sidecar:0.2.0"
+
+		rewritten, changes, err := rewriteChart(archive, map[string]string{"sidecar": saManagerTarget}, map[string]string{"sidecar": "nexusSaManager"})
+
+		require.NoError(t, err)
+		assert.Equal(t, []imageChange{
+			{Key: "nexusSaManager", Old: "registry.cloudogu.com/k8s/service-account-producer-sidecar:0.1.3", New: saManagerTarget},
+		}, changes)
+		assert.Equal(t, map[string]any{
+			"nexus":          "registry.cloudogu.com/official/nexus:3.96.4-3",
+			"nexusSaManager": saManagerTarget,
+			"postgresql":     "docker.io/library/postgres:14.18",
+		}, chartYAML(t, rewritten, mirrorPatchTemplateFile)["values"].(map[string]any)["images"])
+	})
+
+	t.Run("resolves an ambiguous repository name with an explicit key", func(t *testing.T) {
+		archive := packChartWith(t, "nexus", withMirrorPatchTemplate(`apiVersion: v1
+values:
+  images:
+    nexus: registry.cloudogu.com/official/nexus:3.96.4-3
+    nexusOld: registry.cloudogu.com/official/nexus:3.70.0-1
+`))
+
+		_, changes, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget}, map[string]string{"nexus": "nexus"})
 
 		require.NoError(t, err)
 		assert.Equal(t, []imageChange{{Key: "nexus", Old: "registry.cloudogu.com/official/nexus:3.96.4-3", New: nexusTarget}}, changes)
@@ -141,7 +172,7 @@ func TestRewriteChart(t *testing.T) {
 	t.Run("keeps the patches of the mirror patch template", func(t *testing.T) {
 		_, archive := packChart(t, "nexus")
 
-		rewritten, _, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget})
+		rewritten, _, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget}, nil)
 
 		require.NoError(t, err)
 
@@ -156,7 +187,7 @@ func TestRewriteChart(t *testing.T) {
 	t.Run("keeps all other files unchanged", func(t *testing.T) {
 		_, archive := packChart(t, "nexus")
 
-		rewritten, _, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget})
+		rewritten, _, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget}, nil)
 
 		require.NoError(t, err)
 
@@ -179,7 +210,7 @@ patches:
 `)(c)
 		})
 
-		rewritten, _, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget})
+		rewritten, _, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget}, nil)
 
 		require.NoError(t, err)
 		assert.Equal(t, map[string]any{"nexus": map[string]any{"image": nexusTarget, "keep": true}}, chartYAML(t, rewritten, "templates/images.yaml"))
@@ -190,6 +221,7 @@ patches:
 			name    string
 			modify  func(c *chart.Chart)
 			targets map[string]string
+			keys    map[string]string
 			wantErr string
 		}{
 			{
@@ -212,7 +244,21 @@ values:
     nexus: registry.cloudogu.com/official/nexus:3.96.4-3
     nexusOld: registry.cloudogu.com/official/nexus:3.70.0-1
 `),
-				wantErr: `several entries in values.images of mirror-patch-tpl.yaml have the repository name "nexus" of image registry.example.com/testing/dogu/v3/images/nexus:3.96.4-3: nexus, nexusOld`,
+				wantErr: `several entries in values.images of mirror-patch-tpl.yaml have the repository name "nexus" of image registry.example.com/testing/dogu/v3/images/nexus:3.96.4-3: nexus, nexusOld; choose one with --image-key nexus=<key>`,
+			},
+			{
+				name:    "if an explicit key is no entry of values.images",
+				keys:    map[string]string{"nexus": "unknown"},
+				wantErr: `values.images of mirror-patch-tpl.yaml has no entry "unknown" for image registry.example.com/testing/dogu/v3/images/nexus:3.96.4-3`,
+			},
+			{
+				name: "if two images are assigned to the same entry of values.images",
+				targets: map[string]string{
+					"nexus":   nexusTarget,
+					"sidecar": "registry.example.com/testing/dogu/v3/images/sidecar:0.2.0",
+				},
+				keys:    map[string]string{"sidecar": "nexus"},
+				wantErr: `images registry.example.com/testing/dogu/v3/images/nexus:3.96.4-3 and registry.example.com/testing/dogu/v3/images/sidecar:0.2.0 are both assigned to values.images.nexus`,
 			},
 			{
 				name:    "without values.images",
@@ -262,7 +308,7 @@ patches:
 					targets = map[string]string{"nexus": nexusTarget}
 				}
 
-				_, _, err := rewriteChart(packChartWith(t, "nexus", modify), targets)
+				_, _, err := rewriteChart(packChartWith(t, "nexus", modify), targets, tt.keys)
 
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)

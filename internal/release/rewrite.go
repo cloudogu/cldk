@@ -50,12 +50,7 @@ type patchTemplate struct {
 }
 
 // rewriteChart points the packed chart archive to the released images and returns the repacked archive.
-//
-// targets maps the target name of each released image (the last path segment of its repository) to its full target
-// reference. Each image is assigned to the entry of values.images in the mirror patch template whose repository has
-// the same name. The patches of the template are rendered with the new references and merged into the chart files,
-// and the template is written back with the new references. All other files stay unchanged.
-func rewriteChart(archive []byte, targets map[string]string) ([]byte, []imageChange, error) {
+func rewriteChart(archive []byte, targets map[string]string, explicitKeys map[string]string) ([]byte, []imageChange, error) {
 	c, err := loader.LoadArchive(bytes.NewReader(archive))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load chart archive: %w", err)
@@ -76,7 +71,7 @@ func rewriteChart(archive []byte, targets map[string]string) ([]byte, []imageCha
 		return nil, nil, err
 	}
 
-	changes, err := assignImages(images, targets)
+	changes, err := assignImages(images, targets, explicitKeys)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -131,9 +126,9 @@ func (tpl *patchTemplate) images() (map[string]string, error) {
 	return images, nil
 }
 
-// assignImages assigns each target to the entry of images whose repository has the target name and returns the
-// resulting changes, ordered by target name.
-func assignImages(images map[string]string, targets map[string]string) ([]imageChange, error) {
+// assignImages assigns each target to the entry of images with its explicit key or, without one, to the entry whose
+// repository has the target name, and returns the resulting changes, ordered by target name.
+func assignImages(images map[string]string, targets map[string]string, explicitKeys map[string]string) ([]imageChange, error) {
 	keysByName := map[string][]string{}
 
 	for key, ref := range images {
@@ -147,24 +142,48 @@ func assignImages(images map[string]string, targets map[string]string) ([]imageC
 	}
 
 	changes := make([]imageChange, 0, len(targets))
+	targetByKey := map[string]string{}
 
 	for _, targetName := range slices.Sorted(maps.Keys(targets)) {
-		keys := keysByName[targetName]
-		slices.Sort(keys)
-
-		switch len(keys) {
-		case 0:
-			return nil, fmt.Errorf("no entry in values.images of %s has the repository name %q of image %s",
-				mirrorPatchTemplateFile, targetName, targets[targetName])
-		case 1:
-			changes = append(changes, imageChange{Key: keys[0], Old: images[keys[0]], New: targets[targetName]})
-		default:
-			return nil, fmt.Errorf("several entries in values.images of %s have the repository name %q of image %s: %s",
-				mirrorPatchTemplateFile, targetName, targets[targetName], strings.Join(keys, ", "))
+		key, err := assignImage(images, keysByName, targetName, targets[targetName], explicitKeys)
+		if err != nil {
+			return nil, err
 		}
+
+		if other, ok := targetByKey[key]; ok {
+			return nil, fmt.Errorf("images %s and %s are both assigned to values.images.%s", other, targets[targetName], key)
+		}
+
+		targetByKey[key] = targets[targetName]
+		changes = append(changes, imageChange{Key: key, Old: images[key], New: targets[targetName]})
 	}
 
 	return changes, nil
+}
+
+// assignImage returns the key of the entry of images the target is assigned to.
+func assignImage(images map[string]string, keysByName map[string][]string, targetName, targetRef string, explicitKeys map[string]string) (string, error) {
+	if key, ok := explicitKeys[targetName]; ok {
+		if _, ok := images[key]; !ok {
+			return "", fmt.Errorf("values.images of %s has no entry %q for image %s", mirrorPatchTemplateFile, key, targetRef)
+		}
+
+		return key, nil
+	}
+
+	candidates := keysByName[targetName]
+	slices.Sort(candidates)
+
+	switch len(candidates) {
+	case 0:
+		return "", fmt.Errorf("no entry in values.images of %s has the repository name %q of image %s; assign one with --image-key %s=<key>",
+			mirrorPatchTemplateFile, targetName, targetRef, targetName)
+	case 1:
+		return candidates[0], nil
+	default:
+		return "", fmt.Errorf("several entries in values.images of %s have the repository name %q of image %s: %s; choose one with --image-key %s=<key>",
+			mirrorPatchTemplateFile, targetName, targetRef, strings.Join(candidates, ", "), targetName)
+	}
 }
 
 // renderPatches renders the patches against the values and returns, per file of the chart, the values to merge into

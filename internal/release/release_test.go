@@ -295,6 +295,20 @@ func TestReleaseInsecureSkipTLSVerify(t *testing.T) {
 	})
 }
 
+// pullReleasedChart pulls the released nexus chart from the registry with the helm registry client and returns the
+// archive.
+func pullReleasedChart(t *testing.T, reg string) []byte {
+	t.Helper()
+
+	client, err := helmregistry.NewClient(helmregistry.ClientOptPlainHTTP())
+	require.NoError(t, err)
+
+	pulled, err := client.Pull(reg + chartReference)
+	require.NoError(t, err)
+
+	return pulled.Chart.Data
+}
+
 // newSourceImage pushes a random image with the stored docker credentials to the registry under the given repository
 // and tag and returns its reference and digest.
 func newSourceImage(t *testing.T, reg, repositoryAndTag string) (ref string, digest string) {
@@ -371,6 +385,48 @@ func TestReleaseImages(t *testing.T) {
 		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3-rc1"))
 	})
 
+	t.Run("releases the image with an explicit target name and tag", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		source, digest := newSourceImage(t, src, "local-dev/nexus/main:3.96.4-3-build.7")
+
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
+			Options{Images: []string{source + "=nexus:3.96.4-3"}})
+
+		require.NoError(t, err)
+		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3"))
+		assert.Equal(t, []ReleasedImage{
+			{Source: source, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: digest},
+		}, result.Images)
+
+		pulled := pullReleasedChart(t, reg)
+		images := chartYAML(t, pulled, mirrorPatchTemplateFile)["values"].(map[string]any)["images"]
+		assert.Equal(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3", images.(map[string]any)["nexus"])
+	})
+
+	t.Run("assigns an image to the entry of values.images with the explicit key", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		source, _ := newSourceImage(t, src, "ci/sa-producer:0.2.0")
+
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{
+			Images:    []string{source},
+			ImageKeys: []string{"sa-producer=nexusSaManager"},
+		})
+
+		require.NoError(t, err)
+
+		pulled := pullReleasedChart(t, reg)
+		images := chartYAML(t, pulled, mirrorPatchTemplateFile)["values"].(map[string]any)["images"]
+		assert.Equal(t, map[string]any{
+			"nexus":          "registry.cloudogu.com/official/nexus:3.96.4-3",
+			"nexusSaManager": reg + "/testing/dogu/v3/images/sa-producer:0.2.0",
+			"postgresql":     "docker.io/library/postgres:14.18",
+		}, images)
+	})
+
 	t.Run("releases the chart rewritten to the released images", func(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
@@ -382,20 +438,15 @@ func TestReleaseImages(t *testing.T) {
 
 		require.NoError(t, err)
 
-		client, err := helmregistry.NewClient(helmregistry.ClientOptPlainHTTP())
-		require.NoError(t, err)
-
-		pulled, err := client.Pull(reg + chartReference)
-		require.NoError(t, err)
-
-		images := chartYAML(t, pulled.Chart.Data, mirrorPatchTemplateFile)["values"].(map[string]any)["images"]
+		pulled := pullReleasedChart(t, reg)
+		images := chartYAML(t, pulled, mirrorPatchTemplateFile)["values"].(map[string]any)["images"]
 		assert.Equal(t, map[string]any{
 			"nexus":          reg + "/testing/dogu/v3/images/nexus:3.96.4-3",
 			"nexusSaManager": "registry.cloudogu.com/k8s/service-account-producer-sidecar:0.1.3",
 			"postgresql":     reg + "/testing/dogu/v3/images/postgres:14.18",
 		}, images)
 
-		values := chartYAML(t, pulled.Chart.Data, valuesFile)
+		values := chartYAML(t, pulled, valuesFile)
 		assert.Equal(t, map[string]any{
 			"registry":   reg,
 			"repository": "testing/dogu/v3/images/nexus",
@@ -522,6 +573,49 @@ func TestReleaseImagesInsecureSkipTLSVerifyOnlyForTarget(t *testing.T) {
 	assertRegistryEmpty(t, reg)
 }
 
+func TestReleaseImagesAmbiguousEntry(t *testing.T) {
+	src := newTargetRegistry(t)
+	nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+	archive := packChartWith(t, "nexus", withMirrorPatchTemplate(`apiVersion: v1
+values:
+  images:
+    nexus: registry.cloudogu.com/official/nexus:3.96.4-3
+    nexusOld: registry.cloudogu.com/official/nexus:3.70.0-1
+patches:
+  values.yaml:
+    nexus:
+      image: "{{ .images.nexus }}"
+`))
+	chartPath := filepath.Join(t.TempDir(), "nexus-3.96.4-3.tgz")
+	require.NoError(t, os.WriteFile(chartPath, archive, 0o600))
+
+	t.Run("fails before pushing with a hint to --image-key", func(t *testing.T) {
+		reg := newTargetRegistry(t)
+
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus}})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `several entries in values.images of mirror-patch-tpl.yaml have the repository name "nexus"`)
+		assert.Contains(t, err.Error(), "choose one with --image-key nexus=<key>")
+		assertRegistryEmpty(t, reg)
+	})
+
+	t.Run("releases with an explicit key", func(t *testing.T) {
+		reg := newTargetRegistry(t)
+
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
+			Options{Images: []string{nexus}, ImageKeys: []string{"nexus=nexus"}})
+
+		require.NoError(t, err)
+
+		images := chartYAML(t, pullReleasedChart(t, reg), mirrorPatchTemplateFile)["values"].(map[string]any)["images"]
+		assert.Equal(t, map[string]any{
+			"nexus":    reg + "/testing/dogu/v3/images/nexus:3.96.4-3",
+			"nexusOld": "registry.cloudogu.com/official/nexus:3.70.0-1",
+		}, images)
+	})
+}
+
 func TestReleaseImagesFailsBeforePushing(t *testing.T) {
 	src := newTargetRegistry(t)
 	nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
@@ -531,10 +625,11 @@ func TestReleaseImagesFailsBeforePushing(t *testing.T) {
 	nexusDigest := imageDigest(t, nexus)
 
 	tests := []struct {
-		name    string
-		chart   string
-		images  []string
-		wantErr string
+		name      string
+		chart     string
+		images    []string
+		imageKeys []string
+		wantErr   string
 	}{
 		{
 			name:    "if the chart has no mirror patch template",
@@ -572,6 +667,90 @@ func TestReleaseImagesFailsBeforePushing(t *testing.T) {
 			images:  []string{nexus, otherNexus},
 			wantErr: "images " + nexus + " and " + otherNexus + " would both be released as nexus",
 		},
+		{
+			name:    "if two images have the same explicit target name",
+			chart:   "nexus",
+			images:  []string{nexus, usermgt + "=nexus:1.0.0"},
+			wantErr: "images " + nexus + " and " + usermgt + " would both be released as nexus",
+		},
+		{
+			name:    "if an explicit target has no tag",
+			chart:   "nexus",
+			images:  []string{nexus + "=nexus"},
+			wantErr: "invalid image " + nexus + "=nexus: the target must be given as <name>:<tag>",
+		},
+		{
+			name:    "if an explicit target has an empty name",
+			chart:   "nexus",
+			images:  []string{nexus + "=:3.96.4-3"},
+			wantErr: "the target must be given as <name>:<tag>",
+		},
+		{
+			name:    "if an explicit target has an empty tag",
+			chart:   "nexus",
+			images:  []string{nexus + "=nexus:"},
+			wantErr: "the target must be given as <name>:<tag>",
+		},
+		{
+			name:    "if an explicit target name has a path",
+			chart:   "nexus",
+			images:  []string{nexus + "=official/nexus:3.96.4-3"},
+			wantErr: "the target must be given as <name>:<tag>",
+		},
+		{
+			name:    "if an explicit target is invalid",
+			chart:   "nexus",
+			images:  []string{nexus + "=Nexus:3.96.4-3"},
+			wantErr: "invalid target Nexus:3.96.4-3 for image " + nexus,
+		},
+		{
+			name:      "if an image key is given without images",
+			chart:     "nexus",
+			imageKeys: []string{"nexus=nexus"},
+			wantErr:   "image keys require images to release (--image-key needs -i)",
+		},
+		{
+			name:      "if an image key has no key",
+			chart:     "nexus",
+			images:    []string{nexus},
+			imageKeys: []string{"nexus"},
+			wantErr:   `invalid image key "nexus": must be given as <name>=<key>, e.g. nexus=nexus`,
+		},
+		{
+			name:      "if an image key has an empty name",
+			chart:     "nexus",
+			images:    []string{nexus},
+			imageKeys: []string{"=nexus"},
+			wantErr:   `invalid image key "=nexus"`,
+		},
+		{
+			name:      "if an image key has an empty key",
+			chart:     "nexus",
+			images:    []string{nexus},
+			imageKeys: []string{"nexus="},
+			wantErr:   `invalid image key "nexus="`,
+		},
+		{
+			name:      "if an image key is given twice for the same image",
+			chart:     "nexus",
+			images:    []string{nexus},
+			imageKeys: []string{"nexus=nexus", "nexus=nexusSaManager"},
+			wantErr:   `several image keys for image nexus: nexus, nexusSaManager`,
+		},
+		{
+			name:      "if an image key refers to an unknown image",
+			chart:     "nexus",
+			images:    []string{nexus},
+			imageKeys: []string{"usermgt=nexus"},
+			wantErr:   `image key usermgt=nexus refers to no released image (released images: nexus)`,
+		},
+		{
+			name:      "if an image key refers to an unknown entry of values.images",
+			chart:     "nexus",
+			images:    []string{nexus},
+			imageKeys: []string{"nexus=unknown"},
+			wantErr:   `values.images of mirror-patch-tpl.yaml has no entry "unknown" for image`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -579,7 +758,7 @@ func TestReleaseImagesFailsBeforePushing(t *testing.T) {
 			reg := newTargetRegistry(t)
 			chartPath, _ := packChart(t, tt.chart)
 
-			_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: tt.images})
+			_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: tt.images, ImageKeys: tt.imageKeys})
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)

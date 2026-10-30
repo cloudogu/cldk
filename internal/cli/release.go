@@ -57,7 +57,8 @@ func newReleaseCommand(releaser Releaser) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringArrayVarP(&opts.Images, "image", "i", nil, "image to release with the chart (repeatable), e.g. ci-registry.example.com/nexus:3.96.4-3")
+	cmd.Flags().StringArrayVarP(&opts.Images, "image", "i", nil, "image to release with the chart as <ref>[=<name>:<tag>] (repeatable), e.g. ci-registry.example.com/nexus:3.96.4-3 or localhost:5001/local-dev/nexus/main:3.96.4-3=nexus:3.96.4-3")
+	cmd.Flags().StringArrayVar(&opts.ImageKeys, "image-key", nil, "assign an image to values.images.<key> in mirror-patch-tpl.yaml as <name>=<key> (repeatable), e.g. nexus=nexus")
 	cmd.Flags().StringVar(&target.Registry, "reg", "registry.cloudogu.com", "target registry")
 	cmd.Flags().StringVar(&target.Namespace, "namespace", "", "target namespace in the registry (required)")
 	_ = cmd.MarkFlagRequired("namespace")

@@ -76,6 +76,22 @@ func TestReleaseCommand(t *testing.T) {
 			releaser.ReleaseCalls()[0].Opts)
 	})
 
+	t.Run("passes the images with explicit targets and the image keys to the releaser", func(t *testing.T) {
+		isolateCredentialEnv(t)
+		releaser := newSuccessfulReleaser()
+
+		_, _, err := runCldk(t, releaser, "release", "--namespace", "testing",
+			"-i", "localhost:5001/local-dev/nexus/main:3.96.4-3=nexus:3.96.4-3", "-i", "ci.example.com/sa-producer:0.2.0",
+			"--image-key", "nexus=nexus", "--image-key", "sa-producer=nexusSaManager", "nexus-3.96.4-3.tgz")
+
+		require.NoError(t, err)
+		require.Len(t, releaser.ReleaseCalls(), 1)
+		assert.Equal(t, release.Options{
+			Images:    []string{"localhost:5001/local-dev/nexus/main:3.96.4-3=nexus:3.96.4-3", "ci.example.com/sa-producer:0.2.0"},
+			ImageKeys: []string{"nexus=nexus", "sa-producer=nexusSaManager"},
+		}, releaser.ReleaseCalls()[0].Opts)
+	})
+
 	t.Run("prints each released image before the chart", func(t *testing.T) {
 		isolateCredentialEnv(t)
 		releaser := &MockReleaser{
