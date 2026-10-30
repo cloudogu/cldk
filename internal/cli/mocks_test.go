@@ -21,7 +21,7 @@ var _ Releaser = &MockReleaser{}
 //
 //		// make and configure a mocked Releaser
 //		mockedReleaser := &MockReleaser{
-//			ReleaseFunc: func(ctx context.Context, chartPath string, target release.Target) (release.Result, error) {
+//			ReleaseFunc: func(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Result, error) {
 //				panic("mock out the Release method")
 //			},
 //		}
@@ -32,7 +32,7 @@ var _ Releaser = &MockReleaser{}
 //	}
 type MockReleaser struct {
 	// ReleaseFunc mocks the Release method.
-	ReleaseFunc func(ctx context.Context, chartPath string, target release.Target) (release.Result, error)
+	ReleaseFunc func(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Result, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -44,13 +44,15 @@ type MockReleaser struct {
 			ChartPath string
 			// Target is the target argument value.
 			Target release.Target
+			// Opts is the opts argument value.
+			Opts release.Options
 		}
 	}
 	lockRelease sync.RWMutex
 }
 
 // Release calls ReleaseFunc.
-func (mock *MockReleaser) Release(ctx context.Context, chartPath string, target release.Target) (release.Result, error) {
+func (mock *MockReleaser) Release(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Result, error) {
 	if mock.ReleaseFunc == nil {
 		panic("MockReleaser.ReleaseFunc: method is nil but Releaser.Release was just called")
 	}
@@ -58,15 +60,17 @@ func (mock *MockReleaser) Release(ctx context.Context, chartPath string, target 
 		Ctx       context.Context
 		ChartPath string
 		Target    release.Target
+		Opts      release.Options
 	}{
 		Ctx:       ctx,
 		ChartPath: chartPath,
 		Target:    target,
+		Opts:      opts,
 	}
 	mock.lockRelease.Lock()
 	mock.calls.Release = append(mock.calls.Release, callInfo)
 	mock.lockRelease.Unlock()
-	return mock.ReleaseFunc(ctx, chartPath, target)
+	return mock.ReleaseFunc(ctx, chartPath, target, opts)
 }
 
 // ReleaseCalls gets all the calls that were made to Release.
@@ -77,11 +81,13 @@ func (mock *MockReleaser) ReleaseCalls() []struct {
 	Ctx       context.Context
 	ChartPath string
 	Target    release.Target
+	Opts      release.Options
 } {
 	var calls []struct {
 		Ctx       context.Context
 		ChartPath string
 		Target    release.Target
+		Opts      release.Options
 	}
 	mock.lockRelease.RLock()
 	calls = mock.calls.Release

@@ -11,11 +11,6 @@ import (
 	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
-// chartRepository returns the repository of a dogu chart in the target.
-func (t Target) chartRepository(chartName string) string {
-	return fmt.Sprintf("%s/%s/dogu/v3/charts/%s", t.Registry, t.Namespace, chartName)
-}
-
 // loadChartMetadata reads the Chart.yaml of a packed chart archive.
 func loadChartMetadata(archive []byte) (*chart.Metadata, error) {
 	c, err := loader.LoadArchive(bytes.NewReader(archive))

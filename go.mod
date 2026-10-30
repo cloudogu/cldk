@@ -3,11 +3,13 @@ module github.com/cloudogu/cldk
 go 1.27
 
 require (
+	dario.cat/mergo v1.0.1
 	github.com/google/go-containerregistry v0.22.1
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
 	helm.sh/helm/v4 v4.3.1
 	oras.land/oras-go/v2 v2.6.2
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
@@ -70,5 +72,4 @@ require (
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
-	sigs.k8s.io/yaml v1.6.0 // indirect
 )

@@ -1,0 +1,3 @@
+# Runtime patches are applied by the dogu operator and must not be touched by a release.
+nexus:
+  fqdn: '{{ globalConfig "fqdn" }}'

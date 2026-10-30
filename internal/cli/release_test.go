@@ -14,7 +14,7 @@ import (
 // newSuccessfulReleaser returns a releaser mock that releases every chart as nexus 3.96.4-3.
 func newSuccessfulReleaser() *MockReleaser {
 	return &MockReleaser{
-		ReleaseFunc: func(_ context.Context, _ string, _ release.Target) (release.Result, error) {
+		ReleaseFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Result, error) {
 			return release.Result{
 				ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3",
 				ChartDigest:    "sha256:1234",
@@ -63,6 +63,42 @@ func TestReleaseCommand(t *testing.T) {
 		assert.Equal(t, release.Target{Registry: "registry.cloudogu.com", Namespace: "testing"}, releaser.ReleaseCalls()[0].Target)
 	})
 
+	t.Run("passes the images to the releaser", func(t *testing.T) {
+		isolateCredentialEnv(t)
+		releaser := newSuccessfulReleaser()
+
+		_, _, err := runCldk(t, releaser, "release", "--namespace", "testing",
+			"-i", "ci.example.com/nexus:3.96.4-3", "--image", "ci.example.com/postgres:14.18", "nexus-3.96.4-3.tgz")
+
+		require.NoError(t, err)
+		require.Len(t, releaser.ReleaseCalls(), 1)
+		assert.Equal(t, release.Options{Images: []string{"ci.example.com/nexus:3.96.4-3", "ci.example.com/postgres:14.18"}},
+			releaser.ReleaseCalls()[0].Opts)
+	})
+
+	t.Run("prints each released image before the chart", func(t *testing.T) {
+		isolateCredentialEnv(t)
+		releaser := &MockReleaser{
+			ReleaseFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Result, error) {
+				return release.Result{
+					Images: []release.ReleasedImage{
+						{Source: "ci.example.com/nexus:3.96.4-3", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3", Digest: "sha256:abcd"},
+						{Source: "ci.example.com/postgres:14.18", Reference: "registry.cloudogu.com/testing/dogu/v3/images/postgres:14.18", Digest: "sha256:ef01"},
+					},
+					ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3",
+					ChartDigest:    "sha256:1234",
+				}, nil
+			},
+		}
+
+		stdout, _, err := runCldk(t, releaser, "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
+
+		require.NoError(t, err)
+		assert.Equal(t, "Released image ci.example.com/nexus:3.96.4-3 -> registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3@sha256:abcd\n"+
+			"Released image ci.example.com/postgres:14.18 -> registry.cloudogu.com/testing/dogu/v3/images/postgres:14.18@sha256:ef01\n"+
+			"Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3@sha256:1234\n", stdout)
+	})
+
 	t.Run("prints the released chart with its digest", func(t *testing.T) {
 		isolateCredentialEnv(t)
 
@@ -75,7 +111,7 @@ func TestReleaseCommand(t *testing.T) {
 	t.Run("returns the error of the releaser", func(t *testing.T) {
 		isolateCredentialEnv(t)
 		releaser := &MockReleaser{
-			ReleaseFunc: func(_ context.Context, _ string, _ release.Target) (release.Result, error) {
+			ReleaseFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Result, error) {
 				return release.Result{}, errors.New("registry unavailable")
 			},
 		}

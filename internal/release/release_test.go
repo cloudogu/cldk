@@ -18,6 +18,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
+	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -108,7 +109,7 @@ func TestReleaseChart(t *testing.T) {
 		reg := newTargetRegistry(t)
 		chartPath, chartContent := packChart(t, "nexus")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg))
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
 		require.NoError(t, err)
 
 		ref, err := name.ParseReference(reg + chartReference)
@@ -129,7 +130,7 @@ func TestReleaseChart(t *testing.T) {
 		reg := newTargetRegistry(t)
 		chartPath, chartContent := packChart(t, "nexus")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg))
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
 		require.NoError(t, err)
 
 		client, err := helmregistry.NewClient(helmregistry.ClientOptPlainHTTP())
@@ -151,7 +152,7 @@ func TestReleaseChart(t *testing.T) {
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
 
-		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg))
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
 		require.NoError(t, err)
 
 		ref, err := name.ParseReference(reg + chartReference)
@@ -166,7 +167,7 @@ func TestReleaseChart(t *testing.T) {
 	t.Run("fails if the chart file does not exist", func(t *testing.T) {
 		reg := newTargetRegistry(t)
 
-		_, err := NewReleaser().Release(context.Background(), "/does/not/exist.tgz", testTarget(reg))
+		_, err := NewReleaser().Release(context.Background(), "/does/not/exist.tgz", testTarget(reg), Options{})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "/does/not/exist.tgz")
@@ -175,7 +176,7 @@ func TestReleaseChart(t *testing.T) {
 	t.Run("fails if the chart file is no chart archive", func(t *testing.T) {
 		reg := newTargetRegistry(t)
 
-		_, err := NewReleaser().Release(context.Background(), filepath.Join("testdata", "not-a-chart.tgz"), testTarget(reg))
+		_, err := NewReleaser().Release(context.Background(), filepath.Join("testdata", "not-a-chart.tgz"), testTarget(reg), Options{})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not a valid chart archive")
@@ -198,7 +199,7 @@ func TestReleaseAuthentication(t *testing.T) {
 		reg := newTargetRegistryWithBasicAuth(t, "releaser", "s3cret")
 		chartPath, _ := packChart(t, "nexus")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg))
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "credential not found")
@@ -212,7 +213,7 @@ func TestReleaseAuthentication(t *testing.T) {
 		target.User = "releaser"
 		target.Password = "s3cret"
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, target)
+		_, err := NewReleaser().Release(context.Background(), chartPath, target, Options{})
 
 		require.NoError(t, err)
 		assertChartReleased(t, reg)
@@ -232,7 +233,7 @@ func TestReleaseAuthentication(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(dockerConfig, "config.json"), []byte(config), 0o600))
 		chartPath, _ := packChart(t, "nexus")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg))
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
 
 		require.NoError(t, err)
 		assertChartReleased(t, reg)
@@ -244,14 +245,14 @@ func TestReleasePlainHTTP(t *testing.T) {
 	chartPath, _ := packChart(t, "nexus")
 
 	t.Run("fails on a registry without TLS", func(t *testing.T) {
-		_, err := NewReleaser().Release(context.Background(), chartPath, Target{Registry: reg, Namespace: "testing"})
+		_, err := NewReleaser().Release(context.Background(), chartPath, Target{Registry: reg, Namespace: "testing"}, Options{})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "server gave HTTP response to HTTPS client")
 	})
 
 	t.Run("PlainHTTP allows a registry without TLS", func(t *testing.T) {
-		_, err := NewReleaser().Release(context.Background(), chartPath, Target{Registry: reg, Namespace: "testing", PlainHTTP: true})
+		_, err := NewReleaser().Release(context.Background(), chartPath, Target{Registry: reg, Namespace: "testing", PlainHTTP: true}, Options{})
 
 		require.NoError(t, err)
 
@@ -273,7 +274,7 @@ func TestReleaseInsecureSkipTLSVerify(t *testing.T) {
 	chartPath, _ := packChart(t, "nexus")
 
 	t.Run("fails on a registry with an untrusted certificate", func(t *testing.T) {
-		_, err := NewReleaser().Release(context.Background(), chartPath, Target{Registry: reg, Namespace: "testing"})
+		_, err := NewReleaser().Release(context.Background(), chartPath, Target{Registry: reg, Namespace: "testing"}, Options{})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "certificate")
@@ -282,7 +283,7 @@ func TestReleaseInsecureSkipTLSVerify(t *testing.T) {
 	t.Run("InsecureSkipTLSVerify allows an untrusted certificate", func(t *testing.T) {
 		target := Target{Registry: reg, Namespace: "testing", InsecureSkipTLSVerify: true}
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, target)
+		_, err := NewReleaser().Release(context.Background(), chartPath, target, Options{})
 
 		require.NoError(t, err)
 
@@ -292,4 +293,297 @@ func TestReleaseInsecureSkipTLSVerify(t *testing.T) {
 		_, err = remote.Head(ref, remote.WithTransport(srv.Client().Transport))
 		assert.NoError(t, err)
 	})
+}
+
+// newSourceImage pushes a random image with the stored docker credentials to the registry under the given repository
+// and tag and returns its reference and digest.
+func newSourceImage(t *testing.T, reg, repositoryAndTag string) (ref string, digest string) {
+	t.Helper()
+
+	img, err := random.Image(256, 1)
+	require.NoError(t, err)
+
+	ref = reg + "/" + repositoryAndTag
+	parsed, err := name.ParseReference(ref)
+	require.NoError(t, err)
+	require.NoError(t, remote.Write(parsed, img, remote.WithAuthFromKeychain(authn.DefaultKeychain)))
+
+	d, err := img.Digest()
+	require.NoError(t, err)
+
+	return ref, d.String()
+}
+
+// imageDigest returns the digest of the image or index with the given reference, or fails if it does not exist.
+func imageDigest(t *testing.T, ref string, opts ...remote.Option) string {
+	t.Helper()
+
+	parsed, err := name.ParseReference(ref)
+	require.NoError(t, err)
+
+	desc, err := remote.Head(parsed, opts...)
+	require.NoError(t, err)
+
+	return desc.Digest.String()
+}
+
+func TestReleaseImages(t *testing.T) {
+	t.Run("copies the image unchanged to the image repository of the target", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		source, digest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{source}})
+
+		require.NoError(t, err)
+		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3"))
+	})
+
+	t.Run("copies an index unchanged", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		idx, err := random.Index(256, 1, 2)
+		require.NoError(t, err)
+		source := src + "/ci/nexus:3.96.4-3"
+		sourceRef, err := name.ParseReference(source)
+		require.NoError(t, err)
+		require.NoError(t, remote.WriteIndex(sourceRef, idx))
+		digest, err := idx.Digest()
+		require.NoError(t, err)
+
+		_, err = NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{source}})
+
+		require.NoError(t, err)
+		assert.Equal(t, digest.String(), imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3"))
+	})
+
+	t.Run("names the target after the last path segment of the source and keeps the tag", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		source, digest := newSourceImage(t, src, "ci/staging/nexus:3.96.4-3-rc1")
+
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{source}})
+
+		require.NoError(t, err)
+		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3-rc1"))
+	})
+
+	t.Run("releases the chart rewritten to the released images", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		postgres, _ := newSourceImage(t, src, "ci/postgres:14.18")
+
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus, postgres}})
+
+		require.NoError(t, err)
+
+		client, err := helmregistry.NewClient(helmregistry.ClientOptPlainHTTP())
+		require.NoError(t, err)
+
+		pulled, err := client.Pull(reg + chartReference)
+		require.NoError(t, err)
+
+		images := chartYAML(t, pulled.Chart.Data, mirrorPatchTemplateFile)["values"].(map[string]any)["images"]
+		assert.Equal(t, map[string]any{
+			"nexus":          reg + "/testing/dogu/v3/images/nexus:3.96.4-3",
+			"nexusSaManager": "registry.cloudogu.com/k8s/service-account-producer-sidecar:0.1.3",
+			"postgresql":     reg + "/testing/dogu/v3/images/postgres:14.18",
+		}, images)
+
+		values := chartYAML(t, pulled.Chart.Data, valuesFile)
+		assert.Equal(t, map[string]any{
+			"registry":   reg,
+			"repository": "testing/dogu/v3/images/nexus",
+			"tag":        "3.96.4-3",
+		}, values["nexus"].(map[string]any)["image"])
+		assert.Equal(t, map[string]any{
+			"registry":   "registry.cloudogu.com",
+			"repository": "k8s/service-account-producer-sidecar",
+			"tag":        "0.1.3",
+		}, values["nexus"].(map[string]any)["saManager"].(map[string]any)["image"])
+	})
+
+	t.Run("returns source, reference and digest of each released image", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
+
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus, postgres}})
+
+		require.NoError(t, err)
+		assert.Equal(t, []ReleasedImage{
+			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest},
+			{Source: postgres, Reference: reg + "/testing/dogu/v3/images/postgres:14.18", Digest: postgresDigest},
+		}, result.Images)
+		assert.Equal(t, reg+chartReference, result.ChartReference)
+		assert.Equal(t, imageDigest(t, reg+chartReference), result.ChartDigest)
+	})
+
+	t.Run("uses the stored docker credentials for the source and the given credentials for the target", func(t *testing.T) {
+		dockerConfig, _ := isolateCredentialConfig(t)
+		src := newTargetRegistryWithBasicAuth(t, "reader", "r34d")
+		reg := newTargetRegistryWithBasicAuth(t, "releaser", "s3cret")
+		auth := base64.StdEncoding.EncodeToString([]byte("reader:r34d"))
+		config := `{"auths":{"` + src + `":{"auth":"` + auth + `"}}}`
+		require.NoError(t, os.WriteFile(filepath.Join(dockerConfig, "config.json"), []byte(config), 0o600))
+		chartPath, _ := packChart(t, "nexus")
+		source, digest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		target := testTarget(reg)
+		target.User = "releaser"
+		target.Password = "s3cret"
+
+		_, err := NewReleaser().Release(context.Background(), chartPath, target, Options{Images: []string{source}})
+
+		require.NoError(t, err)
+
+		targetAuth := remote.WithAuth(&authn.Basic{Username: "releaser", Password: "s3cret"})
+		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3", targetAuth))
+	})
+
+	t.Run("does not release the chart if pushing an image fails", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		handler := newRegistryHandler()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/dogu/v3/images/") {
+				w.WriteHeader(http.StatusForbidden)
+
+				return
+			}
+
+			handler.ServeHTTP(w, r)
+		}))
+		t.Cleanup(srv.Close)
+		reg := strings.TrimPrefix(srv.URL, "http://")
+		chartPath, _ := packChart(t, "nexus")
+		source, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{source}})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to push image "+source)
+		assertNotInRegistry(t, reg+chartReference)
+	})
+}
+
+// assertNotInRegistry asserts that the given reference does not exist in its registry.
+func assertNotInRegistry(t *testing.T, ref string) {
+	t.Helper()
+
+	parsed, err := name.ParseReference(ref)
+	require.NoError(t, err)
+
+	_, err = remote.Head(parsed)
+	assert.Error(t, err, "%s should not exist", ref)
+}
+
+// assertRegistryEmpty asserts that nothing has been pushed to the registry.
+func assertRegistryEmpty(t *testing.T, reg string) {
+	t.Helper()
+
+	r, err := name.NewRegistry(reg)
+	require.NoError(t, err)
+
+	repos, err := remote.Catalog(context.Background(), r)
+	require.NoError(t, err)
+	assert.Empty(t, repos)
+}
+
+func TestReleaseImagesInsecureSkipTLSVerifyOnlyForTarget(t *testing.T) {
+	srv := httptest.NewUnstartedServer(newRegistryHandler())
+	srv.Config.ErrorLog = log.New(io.Discard, "", 0) // the failing TLS handshakes are expected
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+
+	src := strings.TrimPrefix(srv.URL, "https://")
+	img, err := random.Image(256, 1)
+	require.NoError(t, err)
+	source := src + "/ci/nexus:3.96.4-3"
+	sourceRef, err := name.ParseReference(source)
+	require.NoError(t, err)
+	require.NoError(t, remote.Write(sourceRef, img, remote.WithTransport(srv.Client().Transport)))
+
+	reg := newTargetRegistry(t)
+	chartPath, _ := packChart(t, "nexus")
+	target := testTarget(reg)
+	target.InsecureSkipTLSVerify = true
+
+	_, err = NewReleaser().Release(context.Background(), chartPath, target, Options{Images: []string{source}})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to resolve image "+source)
+	assert.Contains(t, err.Error(), "certificate")
+	assertRegistryEmpty(t, reg)
+}
+
+func TestReleaseImagesFailsBeforePushing(t *testing.T) {
+	src := newTargetRegistry(t)
+	nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+	usermgt, _ := newSourceImage(t, src, "ci/usermgt:1.20.0-1")
+	otherNexus, _ := newSourceImage(t, src, "other/nexus:3.96.4-3")
+	redmine, _ := newSourceImage(t, src, "ci/redmine:6.1.2-dev.1")
+	nexusDigest := imageDigest(t, nexus)
+
+	tests := []struct {
+		name    string
+		chart   string
+		images  []string
+		wantErr string
+	}{
+		{
+			name:    "if the chart has no mirror patch template",
+			chart:   "redmine-prerelease",
+			images:  []string{redmine},
+			wantErr: "chart has no mirror-patch-tpl.yaml",
+		},
+		{
+			name:    "if no entry of values.images matches an image",
+			chart:   "nexus",
+			images:  []string{nexus, usermgt},
+			wantErr: `no entry in values.images of mirror-patch-tpl.yaml has the repository name "usermgt"`,
+		},
+		{
+			name:    "if an image does not exist",
+			chart:   "nexus",
+			images:  []string{nexus, src + "/ci/missing:1.0.0"},
+			wantErr: "failed to resolve image " + src + "/ci/missing:1.0.0",
+		},
+		{
+			name:    "if an image has no tag",
+			chart:   "nexus",
+			images:  []string{src + "/ci/nexus@" + nexusDigest},
+			wantErr: "has no tag",
+		},
+		{
+			name:    "if an image reference is invalid",
+			chart:   "nexus",
+			images:  []string{"Not A Reference"},
+			wantErr: "invalid image reference Not A Reference",
+		},
+		{
+			name:    "if two images have the same target name",
+			chart:   "nexus",
+			images:  []string{nexus, otherNexus},
+			wantErr: "images " + nexus + " and " + otherNexus + " would both be released as nexus",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reg := newTargetRegistry(t)
+			chartPath, _ := packChart(t, tt.chart)
+
+			_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: tt.images})
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+			assertRegistryEmpty(t, reg)
+		})
+	}
 }

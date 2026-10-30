@@ -5,15 +5,21 @@ Cloudogu (LOP) Development Kit helps developers in releasing and developing thei
 
 ```shell
 cldk release --namespace <ns> <chart.tgz>   # release a packed dogu chart to registry.cloudogu.com
+cldk release --namespace <ns> -i <image> ... <chart.tgz>   # release the chart together with its images
 cldk version        # print the version and commit of cldk
 cldk -v <command>   # enable debug logging
 cldk --help
 ```
 
-`cldk release` pushes the chart unchanged to `oci://<reg>/<ns>/dogu/v3/charts/<name>:<version>`, name and version are read from `Chart.yaml`.
-Use `--reg` for another target registry, `--plain-http` for registries without TLS and `--insecure` for registries with untrusted (e.g. self-signed) certificates.
-The target registry is accessed with `--user`/`--pass` (or `CLDK_USER`/`CLDK_PASSWORD`) if given, else with the stored credentials of `helm registry login` or `docker login`.
-Credentials are never persisted.
+- `cldk release` pushes the chart to `oci://<reg>/<ns>/dogu/v3/charts/<name>:<version>`, name and version are read from `Chart.yaml`. 
+- Each image given with `-i` is copied unchanged (same digest) from its registry to `<reg>/<ns>/dogu/v3/images/<name>:<tag>`, named after the last path segment of the source and keeping its tag.
+  - The images are read with the stored credentials of `docker login`.
+  - With images, the chart needs a `mirror-patch-tpl.yaml`: each image replaces the entry of `values.images` with the same repository name, the `patches` are applied with the new references and the chart is repacked.
+  - The entries of all other images in `values.images` stay unchanged.
+  - All images are pushed before the chart.
+- Use `--reg` for another target registry, `--plain-http` for a target registry without TLS and `--insecure` for a target registry with an untrusted (e.g. self-signed) certificate.
+- The target registry is accessed with `--user`/`--pass` (or `CLDK_USER`/`CLDK_PASSWORD`) if given, else with the stored credentials of `helm registry login` or `docker login`.
+- Credentials are never persisted.
 
 ## Building
 
