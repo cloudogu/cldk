@@ -59,6 +59,7 @@ func newReleaseCommand(releaser Releaser) *cobra.Command {
 
 	cmd.Flags().StringArrayVarP(&opts.Images, "image", "i", nil, "image to release with the chart as <ref>[=<name>:<tag>] (repeatable), e.g. ci-registry.example.com/nexus:3.96.4-3 or localhost:5001/local-dev/nexus/main:3.96.4-3=nexus:3.96.4-3")
 	cmd.Flags().StringArrayVar(&opts.ImageKeys, "image-key", nil, "assign an image to values.images.<key> in mirror-patch-tpl.yaml as <name>=<key> (repeatable), e.g. nexus=nexus")
+	cmd.Flags().BoolVar(&opts.Force, "force", false, "overwrite image tags with another digest and an already released chart version in the target registry")
 	cmd.Flags().StringVar(&target.Registry, "reg", "registry.cloudogu.com", "target registry")
 	cmd.Flags().StringVar(&target.Namespace, "namespace", "", "target namespace in the registry (required)")
 	_ = cmd.MarkFlagRequired("namespace")
@@ -73,7 +74,12 @@ func newReleaseCommand(releaser Releaser) *cobra.Command {
 // printResult prints the released images and the released chart.
 func printResult(out io.Writer, result release.Result) error {
 	for _, img := range result.Images {
-		if _, err := fmt.Fprintf(out, "Released image %s -> %s@%s\n", img.Source, img.Reference, img.Digest); err != nil {
+		format := "Released image %s -> %s@%s\n"
+		if img.Skipped {
+			format = "Skipped image %s -> %s@%s (already released)\n"
+		}
+
+		if _, err := fmt.Fprintf(out, format, img.Source, img.Reference, img.Digest); err != nil {
 			return err
 		}
 	}

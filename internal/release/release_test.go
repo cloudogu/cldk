@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -502,7 +503,7 @@ func TestReleaseImages(t *testing.T) {
 		src := newTargetRegistry(t)
 		handler := newRegistryHandler()
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.Contains(r.URL.Path, "/dogu/v3/images/") {
+			if r.Method != http.MethodHead && r.Method != http.MethodGet && strings.Contains(r.URL.Path, "/dogu/v3/images/") {
 				w.WriteHeader(http.StatusForbidden)
 
 				return
@@ -765,4 +766,179 @@ func TestReleaseImagesFailsBeforePushing(t *testing.T) {
 			assertRegistryEmpty(t, reg)
 		})
 	}
+}
+
+// pushImage prepares an existing tag in a registry: it writes a new random image directly to the given reference,
+// bypassing the releaser, and returns its digest. The digest differs from that of every source image.
+func pushImage(t *testing.T, ref string) string {
+	t.Helper()
+
+	img, err := random.Image(256, 1)
+	require.NoError(t, err)
+
+	parsed, err := name.ParseReference(ref)
+	require.NoError(t, err)
+	require.NoError(t, remote.Write(parsed, img))
+
+	d, err := img.Digest()
+	require.NoError(t, err)
+
+	return d.String()
+}
+
+func TestReleaseExistingImages(t *testing.T) {
+	t.Run("skips an image whose tag already exists with the same digest", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
+		copyImage(t, nexus, reg+"/testing/dogu/v3/images/nexus:3.96.4-3")
+
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus, postgres}})
+
+		require.NoError(t, err)
+		assert.Equal(t, []ReleasedImage{
+			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest, Skipped: true},
+			{Source: postgres, Reference: reg + "/testing/dogu/v3/images/postgres:14.18", Digest: postgresDigest},
+		}, result.Images)
+		assert.Equal(t, postgresDigest, imageDigest(t, reg+"/testing/dogu/v3/images/postgres:14.18"))
+		assert.Equal(t, imageDigest(t, reg+chartReference), result.ChartDigest)
+	})
+
+	t.Run("fails before pushing if an image tag already exists with another digest", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
+		otherDigest := pushImage(t, reg+"/testing/dogu/v3/images/postgres:14.18")
+
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus, postgres}})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "image "+reg+"/testing/dogu/v3/images/postgres:14.18 already exists with digest "+
+			otherDigest+" instead of "+postgresDigest)
+		assert.Contains(t, err.Error(), "--force")
+		assertNotInRegistry(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3")
+		assertNotInRegistry(t, reg+chartReference)
+		assert.Equal(t, otherDigest, imageDigest(t, reg+"/testing/dogu/v3/images/postgres:14.18"))
+	})
+
+	t.Run("Force overwrites an image tag with another digest", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		pushImage(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3")
+
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
+			Options{Images: []string{nexus}, Force: true})
+
+		require.NoError(t, err)
+		assert.Equal(t, nexusDigest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3"))
+		assert.Equal(t, []ReleasedImage{
+			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest},
+		}, result.Images)
+	})
+
+	t.Run("a retry after a failed image push succeeds without Force", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		handler := newRegistryHandler()
+		var failPostgres atomic.Bool
+		failPostgres.Store(true)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if failPostgres.Load() && r.Method != http.MethodHead && r.Method != http.MethodGet &&
+				strings.Contains(r.URL.Path, "/dogu/v3/images/postgres/") {
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+
+			handler.ServeHTTP(w, r)
+		}))
+		t.Cleanup(srv.Close)
+		reg := strings.TrimPrefix(srv.URL, "http://")
+		chartPath, _ := packChart(t, "nexus")
+		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
+		opts := Options{Images: []string{nexus, postgres}}
+
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), opts)
+		require.Error(t, err)
+		assert.Equal(t, nexusDigest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3"))
+		assertNotInRegistry(t, reg+chartReference)
+
+		failPostgres.Store(false)
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), opts)
+
+		require.NoError(t, err)
+		assert.True(t, result.Images[0].Skipped)
+		assert.False(t, result.Images[1].Skipped)
+		assert.Equal(t, postgresDigest, imageDigest(t, reg+"/testing/dogu/v3/images/postgres:14.18"))
+		assert.Equal(t, imageDigest(t, reg+chartReference), result.ChartDigest)
+	})
+}
+
+func TestReleaseExistingChart(t *testing.T) {
+	t.Run("fails if the chart version is already released", func(t *testing.T) {
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		require.NoError(t, err)
+
+		_, err = NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "chart "+reg+chartReference+" is already released")
+		assert.Contains(t, err.Error(), "--force")
+	})
+
+	t.Run("fails before pushing any image if the chart version is already released", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		require.NoError(t, err)
+
+		_, err = NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus}})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "is already released")
+		assertNotInRegistry(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3")
+	})
+
+	t.Run("Force overwrites the released chart version", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		reg := newTargetRegistry(t)
+		chartPath, _ := packChart(t, "nexus")
+		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		require.NoError(t, err)
+
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
+			Options{Images: []string{nexus}, Force: true})
+
+		require.NoError(t, err)
+		assert.Equal(t, imageDigest(t, reg+chartReference), result.ChartDigest)
+
+		images := chartYAML(t, pullReleasedChart(t, reg), mirrorPatchTemplateFile)["values"].(map[string]any)["images"]
+		assert.Equal(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3", images.(map[string]any)["nexus"])
+	})
+}
+
+// copyImage copies the image with the source reference unchanged to the target reference.
+func copyImage(t *testing.T, source, target string) {
+	t.Helper()
+
+	sourceRef, err := name.ParseReference(source)
+	require.NoError(t, err)
+
+	img, err := remote.Image(sourceRef)
+	require.NoError(t, err)
+
+	targetRef, err := name.ParseReference(target)
+	require.NoError(t, err)
+	require.NoError(t, remote.Write(targetRef, img))
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"path"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 )
 
 // ReleasedImage is an image that has been released.
@@ -23,6 +25,8 @@ type ReleasedImage struct {
 	Reference string
 	// Digest is the digest of the released manifest or index, which equals the digest of the source.
 	Digest string
+	// Skipped is true if the target already had the image with the same digest, so that it has not been pushed again.
+	Skipped bool
 }
 
 // image is an image to release.
@@ -33,6 +37,8 @@ type image struct {
 	target     name.Tag
 	// desc is the manifest or index of the source, set by resolve.
 	desc *remote.Descriptor
+	// released is true if the target already has the image with the same digest, set by checkTarget.
+	released bool
 }
 
 // parseImages parses the images as given in Options.Images and computes their targets without accessing a registry.
@@ -147,24 +153,72 @@ func resolveImages(ctx context.Context, images []*image) error {
 	return nil
 }
 
-// push copies the manifest or index of the image unchanged to its target.
+// checkTarget checks whether the target tag of the image already exists.
+func (img *image) checkTarget(ctx context.Context, target Target, force bool) error {
+	slog.Debug("checking image target", "target", img.target.String())
+
+	existing, err := remote.Head(img.target, targetOptions(ctx, target)...)
+	if isNotFound(err) {
+		return nil
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to check image %s: %w", img.target, err)
+	}
+
+	if existing.Digest == img.desc.Digest {
+		img.released = true
+
+		return nil
+	}
+
+	if !force {
+		return fmt.Errorf("image %s already exists with digest %s instead of %s of %s, use --force to overwrite it",
+			img.target, existing.Digest, img.desc.Digest, img.source)
+	}
+
+	slog.Debug("overwriting image", "target", img.target.String(), "digest", existing.Digest.String())
+
+	return nil
+}
+
+// push copies the manifest or index of the image unchanged to its target, unless the target already has it.
 func (img *image) push(ctx context.Context, target Target) (ReleasedImage, error) {
+	released := ReleasedImage{Source: img.source.String(), Reference: img.target.String(), Digest: img.desc.Digest.String()}
+
+	if img.released {
+		slog.Debug("skipping already released image", "source", img.source.String(), "target", img.target.String())
+		released.Skipped = true
+
+		return released, nil
+	}
+
+	slog.Debug("pushing image", "source", img.source.String(), "target", img.target.String())
+
+	if err := remote.Push(img.target, img.desc, targetOptions(ctx, target)...); err != nil {
+		return ReleasedImage{}, fmt.Errorf("failed to push image %s to %s: %w", img.source, img.target, err)
+	}
+
+	return released, nil
+}
+
+// targetOptions returns the options to access the registry of the target.
+func targetOptions(ctx context.Context, target Target) []remote.Option {
 	opts := []remote.Option{
 		remote.WithContext(ctx),
 		remote.WithTransport(newTransport(target)),
 	}
 
 	if target.User != "" {
-		opts = append(opts, remote.WithAuth(&authn.Basic{Username: target.User, Password: target.Password}))
-	} else {
-		opts = append(opts, remote.WithAuthFromKeychain(authn.DefaultKeychain))
+		return append(opts, remote.WithAuth(&authn.Basic{Username: target.User, Password: target.Password}))
 	}
 
-	slog.Debug("pushing image", "source", img.source.String(), "target", img.target.String())
+	return append(opts, remote.WithAuthFromKeychain(authn.DefaultKeychain))
+}
 
-	if err := remote.Push(img.target, img.desc, opts...); err != nil {
-		return ReleasedImage{}, fmt.Errorf("failed to push image %s to %s: %w", img.source, img.target, err)
-	}
+// isNotFound reports whether err is the response of a registry to a missing manifest.
+func isNotFound(err error) bool {
+	var transportErr *transport.Error
 
-	return ReleasedImage{Source: img.source.String(), Reference: img.target.String(), Digest: img.desc.Digest.String()}, nil
+	return errors.As(err, &transportErr) && transportErr.StatusCode == http.StatusNotFound
 }

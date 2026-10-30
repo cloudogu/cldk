@@ -19,6 +19,10 @@ cldk --help
   - Use `--image-key <name>=<key>` (repeatable) to assign an image to the entry `values.images.<key>` explicitly, e.g. if no or several entries have its repository name.
   - The entries of all other images in `values.images` stay unchanged.
   - All images are pushed before the chart.
+- Released artifacts are never overwritten silently. All targets are checked before the first push:
+  - An image tag that already exists with the same digest is skipped, so a failed release can simply be run again.
+  - An image tag with another digest or an already released chart version aborts the release.
+  - Use `--force` to overwrite both, e.g. for testing releases.
 - Use `--reg` for another target registry, `--plain-http` for a target registry without TLS and `--insecure` for a target registry with an untrusted (e.g. self-signed) certificate.
 - The target registry is accessed with `--user`/`--pass` (or `CLDK_USER`/`CLDK_PASSWORD`) if given, else with the stored credentials of `helm registry login` or `docker login`.
 - Credentials are never persisted.

@@ -6,20 +6,24 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+
+	"helm.sh/helm/v4/pkg/registry"
 )
 
 // Options are the settings of a release besides the target.
 type Options struct {
-	// Images are the images to release together with the chart, each given as "<source>" or
-	// "<source>=<target name>:<tag>", e.g. "ci-registry.example.com/nexus:3.96.4-3" or
-	// "localhost:5001/local-dev/nexus/main:3.96.4-3=nexus:3.96.4-3". Each image is copied to the image repository of
-	// the target with the given name and tag, by default the last path segment of its source repository and its source
-	// tag. The chart is rewritten to refer to the copied images.
+	// Images are the images to release together with the chart, each given as "<source>" or "<source>=<target name>:<tag>",
+	// e.g. "ci-registry.example.com/nexus:3.96.4-3" or "localhost:5001/local-dev/nexus/main:3.96.4-3=nexus:3.96.4-3".
+	// Each image is copied to the image repository of the target with the given name and tag,
+	// by default the last path segment of its source repository and its source tag.
 	Images []string
 	// ImageKeys assign images explicitly to entries of values.images in the mirror patch template of the chart, each
-	// given as "<target name>=<key>", e.g. "nexus=nexus". An image without an explicit key is assigned to the entry
-	// whose repository has its target name.
+	// given as "<target name>=<key>", e.g. "nexus=nexus".
+	// An image without an explicit key is assigned to the entry whose repository has its target name.
 	ImageKeys []string
+	// Force overwrites image tags with another digest and an already released chart version in the target.
+	// Without it, both abort the release before anything is pushed.
+	Force bool
 }
 
 // Result describes what has been released.
@@ -80,18 +84,20 @@ func (r *Releaser) Release(ctx context.Context, chartPath string, target Target,
 		return Result{}, err
 	}
 
-	var result Result
+	ref := target.chartRepository(meta.Name) + ":" + meta.Version
 
-	for _, img := range images {
-		released, err := img.push(ctx, target)
-		if err != nil {
-			return Result{}, err
-		}
-
-		result.Images = append(result.Images, released)
+	// All targets are checked before the first push, so that a conflict does not leave a partial release.
+	if err = checkTargets(ctx, images, client, ref, target, opts.Force); err != nil {
+		return Result{}, err
 	}
 
-	ref := target.chartRepository(meta.Name) + ":" + meta.Version
+	var result Result
+
+	result.Images, err = pushImages(ctx, images, target)
+	if err != nil {
+		return Result{}, err
+	}
+
 	slog.Debug("pushing chart", "target", ref)
 
 	pushed, err := client.Push(archive, ref)
@@ -103,6 +109,33 @@ func (r *Releaser) Release(ctx context.Context, chartPath string, target Target,
 	result.ChartDigest = pushed.Manifest.Digest
 
 	return result, nil
+}
+
+// checkTargets checks the targets of all images and of the chart.
+func checkTargets(ctx context.Context, images []*image, client *registry.Client, chartRef string, target Target, force bool) error {
+	for _, img := range images {
+		if err := img.checkTarget(ctx, target, force); err != nil {
+			return err
+		}
+	}
+
+	return checkChartTarget(client, chartRef, force)
+}
+
+// pushImages pushes the images in their order and returns them as released.
+func pushImages(ctx context.Context, images []*image, target Target) ([]ReleasedImage, error) {
+	var released []ReleasedImage
+
+	for _, img := range images {
+		r, err := img.push(ctx, target)
+		if err != nil {
+			return nil, err
+		}
+
+		released = append(released, r)
+	}
+
+	return released, nil
 }
 
 // rewriteChartForImages points the chart archive to the target references of the images.
