@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"path"
 	"slices"
 	"strings"
@@ -13,7 +12,6 @@ import (
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 )
 
 // ReleasedImage is an image that has been released.
@@ -182,51 +180,6 @@ func resolveImages(ctx context.Context, images []imageSpec) ([]resolvedImage, er
 	return resolved, nil
 }
 
-// checkImageTargets checks the targets of all images and returns the images with their status.
-func checkImageTargets(ctx context.Context, images []resolvedImage, target Target, force bool) ([]checkedImage, error) {
-	checked := make([]checkedImage, 0, len(images))
-
-	for _, img := range images {
-		c, err := img.checkTarget(ctx, target, force)
-		if err != nil {
-			return nil, err
-		}
-
-		checked = append(checked, c)
-	}
-
-	return checked, nil
-}
-
-// checkTarget checks whether the target tag of the image already exists and returns the image with its status.
-// An existing tag with another digest is a conflict unless force allows to overwrite it.
-func (img resolvedImage) checkTarget(ctx context.Context, target Target, force bool) (checkedImage, error) {
-	slog.Debug("checking image target", "target", img.target.String())
-
-	existing, err := remote.Head(img.target, targetOptions(ctx, target)...)
-	if isNotFound(err) {
-		return checkedImage{resolvedImage: img, status: StatusPushed}, nil
-	}
-
-	if err != nil {
-		return checkedImage{}, fmt.Errorf("failed to check image %s: %w", img.target, err)
-	}
-
-	checked := checkedImage{resolvedImage: img, existingDigest: existing.Digest.String()}
-
-	switch {
-	case existing.Digest == img.desc.Digest:
-		checked.status = StatusSkipped
-	case !force:
-		checked.status = StatusConflict
-	default:
-		slog.Debug("overwriting image", "target", img.target.String(), "digest", existing.Digest.String())
-		checked.status = StatusOverwritten
-	}
-
-	return checked, nil
-}
-
 // planned describes the image as it would be released to its target.
 func (img checkedImage) planned() PlannedImage {
 	return PlannedImage{
@@ -246,44 +199,4 @@ func (img checkedImage) released() ReleasedImage {
 		Digest:    img.desc.Digest.String(),
 		Status:    img.status,
 	}
-}
-
-// push copies the manifest or index of the image unchanged to its target, unless the target already has it.
-func (img checkedImage) push(ctx context.Context, target Target) (ReleasedImage, error) {
-	released := img.released()
-
-	if released.Status == StatusSkipped {
-		slog.Debug("skipping already released image", "source", img.source.String(), "target", img.target.String())
-
-		return released, nil
-	}
-
-	slog.Debug("pushing image", "source", img.source.String(), "target", img.target.String())
-
-	if err := remote.Push(img.target, img.desc, targetOptions(ctx, target)...); err != nil {
-		return ReleasedImage{}, fmt.Errorf("failed to push image %s to %s: %w", img.source, img.target, err)
-	}
-
-	return released, nil
-}
-
-// targetOptions returns the options to access the registry of the target.
-func targetOptions(ctx context.Context, target Target) []remote.Option {
-	opts := []remote.Option{
-		remote.WithContext(ctx),
-		remote.WithTransport(newTransport(target)),
-	}
-
-	if target.User != "" {
-		return append(opts, remote.WithAuth(&authn.Basic{Username: target.User, Password: target.Password}))
-	}
-
-	return append(opts, remote.WithAuthFromKeychain(authn.DefaultKeychain))
-}
-
-// isNotFound reports whether err is the response of a registry to a missing manifest.
-func isNotFound(err error) bool {
-	var transportErr *transport.Error
-
-	return errors.As(err, &transportErr) && transportErr.StatusCode == http.StatusNotFound
 }

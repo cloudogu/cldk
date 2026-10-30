@@ -1,9 +1,7 @@
 package release
 
 import (
-	"crypto/tls"
 	"fmt"
-	"net/http"
 
 	"github.com/google/go-containerregistry/pkg/name"
 )
@@ -41,19 +39,4 @@ func (t Target) nameOptions() []name.Option {
 	}
 
 	return nil
-}
-
-// newTransport creates the HTTP transport for all connections to the registry of the target.
-func newTransport(target Target) *http.Transport {
-	t := &http.Transport{Proxy: http.ProxyFromEnvironment}
-
-	if defaultTransport, ok := http.DefaultTransport.(*http.Transport); ok {
-		t = defaultTransport.Clone()
-	}
-
-	if target.InsecureSkipTLSVerify {
-		t.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // explicitly requested with --insecure
-	}
-
-	return t
 }

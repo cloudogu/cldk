@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-
-	"helm.sh/helm/v4/pkg/registry"
 )
 
 // Options are the settings of a release besides the target.
@@ -138,11 +136,10 @@ func (r *Releaser) Release(ctx context.Context, chartPath string, target Target,
 
 // releasePlan is a computed release with everything needed to push it.
 type releasePlan struct {
-	target Target
-	images []checkedImage
+	publisher *publisher
+	images    []checkedImage
 	// archive is the chart archive to push, rewritten to the targets of the images.
 	archive     []byte
-	chartClient *registry.Client
 	chartRef    string
 	chartStatus Status
 }
@@ -181,28 +178,27 @@ func newReleasePlan(ctx context.Context, chartPath string, target Target, opts O
 		}
 	}
 
-	client, err := newChartClient(target)
+	pub, err := newPublisher(target)
 	if err != nil {
 		return nil, err
 	}
 
 	ref := target.chartRepository(meta.Name) + ":" + meta.Version
 
-	images, err := checkImageTargets(ctx, resolved, target, opts.Force)
+	images, err := pub.checkImages(ctx, resolved, opts.Force)
 	if err != nil {
 		return nil, err
 	}
 
-	chartStatus, err := checkChartTarget(client, ref, opts.Force)
+	chartStatus, err := pub.checkChart(ref, opts.Force)
 	if err != nil {
 		return nil, err
 	}
 
 	return &releasePlan{
-		target:      target,
+		publisher:   pub,
 		images:      images,
 		archive:     archive,
-		chartClient: client,
 		chartRef:    ref,
 		chartStatus: chartStatus,
 	}, nil
@@ -224,7 +220,7 @@ func (p *releasePlan) push(ctx context.Context) (Result, error) {
 	result := Result{ChartReference: p.chartRef, ChartStatus: p.chartStatus}
 
 	for _, img := range p.images {
-		released, err := img.push(ctx, p.target)
+		released, err := p.publisher.pushImage(ctx, img)
 		if err != nil {
 			return Result{}, err
 		}
@@ -232,14 +228,12 @@ func (p *releasePlan) push(ctx context.Context) (Result, error) {
 		result.Images = append(result.Images, released)
 	}
 
-	slog.Debug("pushing chart", "target", p.chartRef)
-
-	pushed, err := p.chartClient.Push(p.archive, p.chartRef)
+	digest, err := p.publisher.pushChart(p.archive, p.chartRef)
 	if err != nil {
-		return Result{}, fmt.Errorf("failed to push chart to %s: %w", p.chartRef, err)
+		return Result{}, err
 	}
 
-	result.ChartDigest = pushed.Manifest.Digest
+	result.ChartDigest = digest
 
 	return result, nil
 }
