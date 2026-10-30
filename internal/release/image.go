@@ -77,6 +77,12 @@ func parseImage(spec string, target Target) (*image, error) {
 		return nil, fmt.Errorf("image %s has no tag", source)
 	}
 
+	// Without a registry, the image would silently be pulled from docker.io, which hardly ever is the intended source.
+	if !hasRegistry(source) {
+		return nil, fmt.Errorf("image %s has no registry, give it explicitly, e.g. docker.io/%s:%s",
+			source, sourceTag.RepositoryStr(), sourceTag.TagStr())
+	}
+
 	targetName := path.Base(sourceTag.RepositoryStr())
 	tag := sourceTag.TagStr()
 
@@ -93,6 +99,14 @@ func parseImage(spec string, target Target) (*image, error) {
 	}
 
 	return &image{source: sourceTag, targetName: targetName, target: targetTag}, nil
+}
+
+// hasRegistry reports whether the image reference starts with a registry. Like docker, it takes the first path segment
+// as registry if it contains a "." or ":" or is "localhost".
+func hasRegistry(ref string) bool {
+	first, _, hasPath := strings.Cut(ref, "/")
+
+	return hasPath && (strings.ContainsAny(first, ".:") || first == "localhost")
 }
 
 // parseImageKeys parses the image keys as given in Options.ImageKeys and returns the keys by target name.

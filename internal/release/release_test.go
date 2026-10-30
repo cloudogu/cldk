@@ -663,6 +663,18 @@ func TestReleaseImagesFailsBeforePushing(t *testing.T) {
 			wantErr: "invalid image reference Not A Reference",
 		},
 		{
+			name:    "if an image reference has no registry",
+			chart:   "nexus",
+			images:  []string{"usermgt:3.4.5"},
+			wantErr: "image usermgt:3.4.5 has no registry, give it explicitly, e.g. docker.io/library/usermgt:3.4.5",
+		},
+		{
+			name:    "if an image reference with a path has no registry",
+			chart:   "nexus",
+			images:  []string{"cloudogu/usermgt:3.4.5"},
+			wantErr: "image cloudogu/usermgt:3.4.5 has no registry, give it explicitly, e.g. docker.io/cloudogu/usermgt:3.4.5",
+		},
+		{
 			name:    "if two images have the same target name",
 			chart:   "nexus",
 			images:  []string{nexus, otherNexus},

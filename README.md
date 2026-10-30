@@ -15,6 +15,9 @@ cldk --help
 - Each image given with `-i` is copied unchanged (same digest) from its registry to `<reg>/<ns>/dogu/v3/images/<name>:<tag>`, named after the last path segment of the source and keeping its tag.
   - Use `-i <image>=<name>:<tag>` to set name and tag explicitly, e.g. `-i localhost:5001/local-dev/nexus/main:3.96.4-3=nexus:3.96.4-3`.
   - The images are read with the stored credentials of `docker login`.
+  - Each image must be given with its registry, e.g. `docker.io/library/postgres:14.18` instead of `postgres:14.18`, so that nothing is pulled from docker.io by accident.
+  - Images are only read from registries, never from the local docker daemon.
+    Push a locally built image to a registry first.
   - With images, the chart needs a `mirror-patch-tpl.yaml`: each image replaces the entry of `values.images` with the same repository name, the `patches` are applied with the new references and the chart is repacked.
   - Use `--image-key <name>=<key>` (repeatable) to assign an image to the entry `values.images.<key>` explicitly, e.g. if no or several entries have its repository name.
   - The entries of all other images in `values.images` stay unchanged.
