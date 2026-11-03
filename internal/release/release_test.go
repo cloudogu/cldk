@@ -522,6 +522,37 @@ func TestReleaseImages(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to push image "+source)
 		assertNotInRegistry(t, reg+chartReference)
 	})
+
+	t.Run("returns the released images if pushing the chart fails", func(t *testing.T) {
+		src := newTargetRegistry(t)
+		handler := newRegistryHandler()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodHead && r.Method != http.MethodGet && strings.Contains(r.URL.Path, "/dogu/v3/charts/") {
+				w.WriteHeader(http.StatusForbidden)
+
+				return
+			}
+
+			handler.ServeHTTP(w, r)
+		}))
+		t.Cleanup(srv.Close)
+		reg := strings.TrimPrefix(srv.URL, "http://")
+		chartPath, _ := packChart(t, "nexus")
+		source, digest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{source}})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to push chart to "+reg+chartReference)
+		assert.Equal(t, []ReleasedImage{{
+			Source:    source,
+			Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3",
+			Digest:    digest,
+			Status:    StatusPushed,
+		}}, result.Images)
+		assert.Equal(t, reg+chartReference, result.ChartReference)
+		assert.Empty(t, result.ChartDigest)
+	})
 }
 
 // assertNotInRegistry asserts that the given reference does not exist in its registry.
@@ -666,13 +697,13 @@ func TestReleaseImagesFailsBeforePushing(t *testing.T) {
 			name:    "if an image reference has no registry",
 			chart:   "nexus",
 			images:  []string{"usermgt:3.4.5"},
-			wantErr: "image usermgt:3.4.5 has no registry, give it explicitly, e.g. docker.io/library/usermgt:3.4.5",
+			wantErr: `image "usermgt:3.4.5" must include a registry hostname, e.g. docker.io/library/usermgt:3.4.5`,
 		},
 		{
 			name:    "if an image reference with a path has no registry",
 			chart:   "nexus",
 			images:  []string{"cloudogu/usermgt:3.4.5"},
-			wantErr: "image cloudogu/usermgt:3.4.5 has no registry, give it explicitly, e.g. docker.io/cloudogu/usermgt:3.4.5",
+			wantErr: `image "cloudogu/usermgt:3.4.5" must include a registry hostname, e.g. docker.io/cloudogu/usermgt:3.4.5`,
 		},
 		{
 			name:    "if two images have the same target name",
@@ -876,13 +907,23 @@ func TestReleaseExistingImages(t *testing.T) {
 		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
 		opts := Options{Images: []string{nexus, postgres}}
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), opts)
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), opts)
 		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to push image "+postgres)
 		assert.Equal(t, nexusDigest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3"))
 		assertNotInRegistry(t, reg+chartReference)
 
+		// The result shows what has been released before the failure.
+		assert.Equal(t, []ReleasedImage{{
+			Source:    nexus,
+			Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3",
+			Digest:    nexusDigest,
+			Status:    StatusPushed,
+		}}, result.Images)
+		assert.Empty(t, result.ChartDigest)
+
 		failPostgres.Store(false)
-		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), opts)
+		result, err = NewReleaser().Release(context.Background(), chartPath, testTarget(reg), opts)
 
 		require.NoError(t, err)
 		assert.Equal(t, StatusSkipped, result.Images[0].Status)

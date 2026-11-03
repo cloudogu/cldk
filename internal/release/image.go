@@ -90,7 +90,7 @@ func parseImage(spec string, target Target) (imageSpec, error) {
 
 	// Without a registry, the image would silently be pulled from docker.io, which hardly ever is the intended source.
 	if !hasRegistry(source) {
-		return imageSpec{}, fmt.Errorf("image %s has no registry, give it explicitly, e.g. docker.io/%s:%s",
+		return imageSpec{}, fmt.Errorf("image %q must include a registry hostname, e.g. docker.io/%s:%s",
 			source, sourceTag.RepositoryStr(), sourceTag.TagStr())
 	}
 
@@ -123,6 +123,10 @@ func hasRegistry(ref string) bool {
 // parseImageKeys parses the image keys as given in Options.ImageKeys and returns the keys by target name.
 // Each image key must refer to the target name of one of the images.
 func parseImageKeys(specs []string, images []imageSpec) (map[string]string, error) {
+	if len(specs) > 0 && len(images) == 0 {
+		return nil, errors.New("image keys require images to release (--image-key needs -i)")
+	}
+
 	targetNames := make([]string, 0, len(images))
 
 	for _, img := range images {
@@ -130,10 +134,6 @@ func parseImageKeys(specs []string, images []imageSpec) (map[string]string, erro
 	}
 
 	slices.Sort(targetNames)
-
-	if len(specs) > 0 && len(images) == 0 {
-		return nil, errors.New("image keys require images to release (--image-key needs -i)")
-	}
 
 	keys := make(map[string]string, len(specs))
 
