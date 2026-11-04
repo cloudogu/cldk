@@ -15,14 +15,17 @@ type BuildInfo struct {
 
 // NewRootCommand creates the cldk root command with all subcommands.
 func NewRootCommand(info BuildInfo, releaser Releaser) *cobra.Command {
-	var verbose bool
+	var (
+		verbose bool
+		dir     string
+	)
 
 	root := &cobra.Command{
 		Use:           "cldk",
 		Short:         "Cloudogu Development Kit for releasing and developing Dogu v3 Helm charts",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			level := slog.LevelInfo
 
 			if verbose {
@@ -31,10 +34,22 @@ func NewRootCommand(info BuildInfo, releaser Releaser) *cobra.Command {
 
 			slog.SetDefault(slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: level})))
 			slog.Debug("starting cldk", "version", info.Version, "commit", info.CommitID)
+
+			keys, err := loadDotEnv(dir)
+			if err != nil {
+				return err
+			}
+
+			if len(keys) > 0 {
+				slog.Debug("loaded variables from .env", "dir", dir, "keys", keys)
+			}
+
+			return nil
 		},
 	}
 
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable debug logging")
+	root.PersistentFlags().StringVarP(&dir, "dir", "d", ".", "project directory, its .env is loaded into the environment")
 
 	root.AddCommand(newVersionCommand(info))
 	root.AddCommand(newReleaseCommand(releaser))

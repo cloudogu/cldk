@@ -5,6 +5,7 @@ go 1.27
 require (
 	dario.cat/mergo v1.0.1
 	github.com/google/go-containerregistry v0.22.1
+	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
 	helm.sh/helm/v4 v4.3.1

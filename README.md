@@ -9,6 +9,7 @@ cldk release --namespace <ns> -i <image> ... <chart.tgz>   # release the chart t
 cldk release --dry-run --namespace <ns> -i <image> ... <chart.tgz>   # print the plan without pushing anything
 cldk version        # print the version and commit of cldk
 cldk -v <command>   # enable debug logging
+cldk -d <dir> <command>   # use <dir> as project directory instead of the working directory
 cldk --help
 ```
 
@@ -34,6 +35,14 @@ cldk --help
 - Use `--reg` for another target registry, `--plain-http` for a target registry without TLS and `--insecure` for a target registry with an untrusted (e.g. self-signed) certificate.
 - The target registry is accessed with `--user`/`--pass` (or `CLDK_USER`/`CLDK_PASSWORD`) if given, else with the stored credentials of `helm registry login` or `docker login`.
 - Credentials are never persisted.
+
+### Project directory and `.env`
+
+- Every command first loads the `.env` of the project directory into its environment, e.g. `CLDK_USER`/`CLDK_PASSWORD` for `release`.
+- The project directory is the working directory or the one given with `--dir`/`-d`.
+- Variables that are already set in the environment, even if empty, take precedence over the `.env`; flags take precedence over both.
+- A missing `.env` is fine, a `.env` that cannot be parsed aborts the command.
+- `cldk -v` logs the names of the variables taken from the `.env`, never their values.
 
 ## Building
 
