@@ -8,6 +8,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/cloudogu/cldk/internal/build"
 	"github.com/cloudogu/cldk/internal/dogu"
 )
 
@@ -158,5 +159,171 @@ func (mock *MockDoguClient) ApplyCalls() []struct {
 	mock.lockApply.RLock()
 	calls = mock.calls.Apply
 	mock.lockApply.RUnlock()
+	return calls
+}
+
+// Ensure that MockBuilder does implement Builder.
+// If this is not the case, regenerate this file with mockery.
+var _ Builder = &MockBuilder{}
+
+// MockBuilder is a mock implementation of Builder.
+//
+//	func TestSomethingThatUsesBuilder(t *testing.T) {
+//
+//		// make and configure a mocked Builder
+//		mockedBuilder := &MockBuilder{
+//			BuildFunc: func(ctx context.Context, req build.BuildRequest) error {
+//				panic("mock out the Build method")
+//			},
+//			CheckFunc: func(ctx context.Context) error {
+//				panic("mock out the Check method")
+//			},
+//			PushFunc: func(ctx context.Context, ref string) error {
+//				panic("mock out the Push method")
+//			},
+//		}
+//
+//		// use mockedBuilder in code that requires Builder
+//		// and then make assertions.
+//
+//	}
+type MockBuilder struct {
+	// BuildFunc mocks the Build method.
+	BuildFunc func(ctx context.Context, req build.BuildRequest) error
+
+	// CheckFunc mocks the Check method.
+	CheckFunc func(ctx context.Context) error
+
+	// PushFunc mocks the Push method.
+	PushFunc func(ctx context.Context, ref string) error
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// Build holds details about calls to the Build method.
+		Build []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Req is the req argument value.
+			Req build.BuildRequest
+		}
+		// Check holds details about calls to the Check method.
+		Check []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
+		// Push holds details about calls to the Push method.
+		Push []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Ref is the ref argument value.
+			Ref string
+		}
+	}
+	lockBuild sync.RWMutex
+	lockCheck sync.RWMutex
+	lockPush  sync.RWMutex
+}
+
+// Build calls BuildFunc.
+func (mock *MockBuilder) Build(ctx context.Context, req build.BuildRequest) error {
+	if mock.BuildFunc == nil {
+		panic("MockBuilder.BuildFunc: method is nil but Builder.Build was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		Req build.BuildRequest
+	}{
+		Ctx: ctx,
+		Req: req,
+	}
+	mock.lockBuild.Lock()
+	mock.calls.Build = append(mock.calls.Build, callInfo)
+	mock.lockBuild.Unlock()
+	return mock.BuildFunc(ctx, req)
+}
+
+// BuildCalls gets all the calls that were made to Build.
+// Check the length with:
+//
+//	len(mockedBuilder.BuildCalls())
+func (mock *MockBuilder) BuildCalls() []struct {
+	Ctx context.Context
+	Req build.BuildRequest
+} {
+	var calls []struct {
+		Ctx context.Context
+		Req build.BuildRequest
+	}
+	mock.lockBuild.RLock()
+	calls = mock.calls.Build
+	mock.lockBuild.RUnlock()
+	return calls
+}
+
+// Check calls CheckFunc.
+func (mock *MockBuilder) Check(ctx context.Context) error {
+	if mock.CheckFunc == nil {
+		panic("MockBuilder.CheckFunc: method is nil but Builder.Check was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockCheck.Lock()
+	mock.calls.Check = append(mock.calls.Check, callInfo)
+	mock.lockCheck.Unlock()
+	return mock.CheckFunc(ctx)
+}
+
+// CheckCalls gets all the calls that were made to Check.
+// Check the length with:
+//
+//	len(mockedBuilder.CheckCalls())
+func (mock *MockBuilder) CheckCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockCheck.RLock()
+	calls = mock.calls.Check
+	mock.lockCheck.RUnlock()
+	return calls
+}
+
+// Push calls PushFunc.
+func (mock *MockBuilder) Push(ctx context.Context, ref string) error {
+	if mock.PushFunc == nil {
+		panic("MockBuilder.PushFunc: method is nil but Builder.Push was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		Ref string
+	}{
+		Ctx: ctx,
+		Ref: ref,
+	}
+	mock.lockPush.Lock()
+	mock.calls.Push = append(mock.calls.Push, callInfo)
+	mock.lockPush.Unlock()
+	return mock.PushFunc(ctx, ref)
+}
+
+// PushCalls gets all the calls that were made to Push.
+// Check the length with:
+//
+//	len(mockedBuilder.PushCalls())
+func (mock *MockBuilder) PushCalls() []struct {
+	Ctx context.Context
+	Ref string
+} {
+	var calls []struct {
+		Ctx context.Context
+		Ref string
+	}
+	mock.lockPush.RLock()
+	calls = mock.calls.Push
+	mock.lockPush.RUnlock()
 	return calls
 }

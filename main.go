@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/cloudogu/cldk/internal/cli"
 	"github.com/cloudogu/cldk/internal/devpush"
@@ -16,8 +19,15 @@ var (
 )
 
 func main() {
+	// Ctrl-C cancels the context, which stops running subprocesses like the builder of dev-push.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
 	cmd := cli.NewRootCommand(cli.BuildInfo{Version: Version, CommitID: CommitID}, release.NewReleaser(), devpush.NewPusher())
-	if err := cmd.Execute(); err != nil {
+	err := cmd.ExecuteContext(ctx)
+
+	stop()
+
+	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}

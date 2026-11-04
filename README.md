@@ -46,9 +46,19 @@ cldk --help
 - The project directory (see below) needs a `cldk.yaml`:
 
   ```yaml
-  namespace: official   # dogu namespace in the registry, required
-  chart: k8s/helm       # chart directory, default k8s/helm
+  namespace: official        # dogu namespace in the registry, required
+  chart: k8s/helm            # chart directory, default k8s/helm
+  images:                    # images to build, optional; without entries nothing is built
+    nexus:                   # image name, pushed to <reg>/<namespace>/dogu/v3/images/<name>
+      context: .             # build context, default .
+      dockerfile: Dockerfile # Dockerfile, default <context>/Dockerfile
+      key: nexus             # key in values.images of mirror-patch-tpl.yaml, default the entry with the repository name <name>
+      target: ""             # stage of a multi-stage build, optional
+      buildArgs:             # static build arguments, optional
+        FOO: bar
   ```
+
+  All paths are relative to the project directory; `nexus: {}` is a valid image entry with all defaults.
 
   Unknown fields in `cldk.yaml` abort the command, so that typos are not silently ignored.
 - Each run creates a new dev version `<version>-dev.<UTC yyyymmddhhmmss>` from the `version` of `Chart.yaml`, e.g. `3.96.4-3-dev.20261103143012`.
@@ -56,7 +66,7 @@ cldk --help
   - The chart is pushed to `oci://<reg>/<namespace>/dogu/v3/charts/<name>:<dev version>`, the same layout as `release`.
 - The chart is loaded from its directory like `helm package` does, including `.helmignore`.
   - If `Chart.yaml` declares dependencies, they must be in `charts/`; run `helm dependency build <chart dir>` first.
-  - The chart is checked with `helm lint` (including `values.schema.json`) before anything is pushed; errors abort, warnings are logged.
+  - The chart is checked with `helm lint` (including `values.schema.json`) before anything is built or pushed; errors abort, warnings are logged.
 - The dev registry, its access and the cluster are given as flags or environment variables, flags first:
 
 | Flag                          | Environment variable      | Description                                                                            |
@@ -68,6 +78,9 @@ cldk --help
 | `--insecure`                  | `CLDK_DEV_INSECURE`       | dev registry with an untrusted (e.g. self-signed) certificate                          |
 | `--kube-context <name>`       | `CLDK_DEV_KUBE_CONTEXT`   | kubeconfig context of the cluster, default the current context                         |
 | `--kube-namespace <ns>`       | `CLDK_DEV_KUBE_NAMESPACE` | Kubernetes namespace of the dogu, default the namespace of the context, else `default` |
+| `--builder <bin>`             | `CLDK_DEV_BUILDER`        | Docker compatible build CLI, default `docker`                                          |
+| `--platform <os/arch>`        | `CLDK_DEV_PLATFORM`       | platform the images are built for, passed to the builder                               |
+| `--build-arg KEY[=VALUE]`     |                           | build argument for all images, repeatable                                              |
 
   - Boolean variables take the values of Go's `strconv.ParseBool`, e.g. `true`, `false`, `1`, `0`; an empty variable counts as not set.
   - The dev registry is accessed with the stored credentials of `docker login` or `helm registry login`.
@@ -78,6 +91,22 @@ cldk --help
   CLDK_DEV_CLUSTER_REG=k3d-registry-proxy.localhost:5000
   CLDK_DEV_PLAIN_HTTP=true
   ```
+
+#### Building images
+
+- `dev-push` builds the images of `cldk.yaml` one after another, ordered by name, and pushes each right after its build:
+  - `<builder> build -f <dockerfile> -t <reg>/<namespace>/dogu/v3/images/<name>:<dev version> [--target …] [--build-arg …] [--platform …] <context>`
+  - `<builder> push <reg>/<namespace>/dogu/v3/images/<name>:<dev version>`
+- The builder is any CLI with Docker compatible `build` and `push` commands, e.g. `docker` or `podman`.
+  - It must be on the `PATH` if at least one image is built.
+  - It inherits the environment of `cldk`, its output goes to stderr; the built images stay in its local store.
+  - The builder must trust the dev registry and be logged in to it if needed, e.g. as insecure registry for a registry without TLS; `--plain-http` and `--insecure` only apply to the chart push of `cldk`.
+- `--platform` takes exactly one platform; without it, the builder chooses.
+- `--build-arg KEY=VALUE` applies to all images and overrides `buildArgs` of the same key; `--build-arg KEY` takes the value from the environment like `docker build`.
+- A copy of the chart gets the references of the built images on the cluster address of the dev registry, e.g. `k3d-registry-proxy.localhost:5000/official/dogu/v3/images/nexus:<dev version>`.
+  - `dev-push` renders `mirror-patch-tpl.yaml` with the new references and merges the patches into the chart.
+  - The chart is rewritten and linted before the first build.
+- The first failed build or push aborts with the image name and the exit code of the builder; images pushed before stay in the dev registry.
 
 #### Installing in the cluster
 
@@ -90,7 +119,7 @@ cldk --help
   - Select another context or namespace with `--kube-context` and `--kube-namespace`.
 - Before linting and pushing, `dev-push` logs the context, server and namespace of the cluster.
 - `dev-push` does not wait for the dogu to be ready.
-- If applying fails after the push, the pushed chart stays in the dev registry.
+- If applying fails after the push, the pushed images and chart stay in the dev registry.
 
 ### Project directory and `.env`
 

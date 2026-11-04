@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,7 +35,7 @@ func isolateDevPushEnv(t *testing.T) {
 	t.Helper()
 
 	unsetEnv(t, envDevRegistry, envDevClusterRegistry, envDevNamespace, envDevPlainHTTP, envDevInsecure, envDevKubeContext,
-		envDevKubeNamespace)
+		envDevKubeNamespace, envDevBuilder, envDevPlatform)
 }
 
 // runDevPush runs dev-push with the given arguments in the project directory dir and returns the options passed to
@@ -61,7 +62,8 @@ func TestDevPushCommand(t *testing.T) {
 		dir := t.TempDir()
 
 		opts, _, _, err := runDevPush(t, dir, "--reg", "localhost:5001", "--cluster-reg", "k3d-registry-proxy.localhost:5000",
-			"--namespace", "personal", "--plain-http", "--insecure", "--kube-context", "k3d-dev2", "--kube-namespace", "dogus")
+			"--namespace", "personal", "--plain-http", "--insecure", "--kube-context", "k3d-dev2", "--kube-namespace", "dogus",
+			"--builder", "podman", "--platform", "linux/arm64", "--build-arg", "FOO=bar", "--build-arg", "HTTP_PROXY")
 
 		require.NoError(t, err)
 		assert.Equal(t, devpush.Options{
@@ -72,6 +74,9 @@ func TestDevPushCommand(t *testing.T) {
 			PlainHTTP:       true,
 			Insecure:        true,
 			Kube:            kube.Options{Context: "k3d-dev2", Namespace: "dogus"},
+			Builder:         "podman",
+			Platform:        "linux/arm64",
+			BuildArgs:       []string{"FOO=bar", "HTTP_PROXY"},
 		}, opts)
 	})
 
@@ -82,7 +87,9 @@ func TestDevPushCommand(t *testing.T) {
 		opts, _, _, err := runDevPush(t, dir, "--reg", "registry.example.com")
 
 		require.NoError(t, err)
-		assert.Equal(t, devpush.Options{Dir: dir, Registry: "registry.example.com", ClusterRegistry: "registry.example.com"}, opts)
+		assert.Equal(t, devpush.Options{
+			Dir: dir, Registry: "registry.example.com", ClusterRegistry: "registry.example.com", Builder: "docker",
+		}, opts)
 	})
 
 	t.Run("takes the options from the environment", func(t *testing.T) {
@@ -94,6 +101,8 @@ func TestDevPushCommand(t *testing.T) {
 		t.Setenv(envDevInsecure, "1")
 		t.Setenv(envDevKubeContext, "k3d-dev2")
 		t.Setenv(envDevKubeNamespace, "dogus")
+		t.Setenv(envDevBuilder, "nerdctl")
+		t.Setenv(envDevPlatform, "linux/amd64")
 		dir := t.TempDir()
 
 		opts, _, _, err := runDevPush(t, dir)
@@ -107,6 +116,8 @@ func TestDevPushCommand(t *testing.T) {
 			PlainHTTP:       true,
 			Insecure:        true,
 			Kube:            kube.Options{Context: "k3d-dev2", Namespace: "dogus"},
+			Builder:         "nerdctl",
+			Platform:        "linux/amd64",
 		}, opts)
 	})
 
@@ -122,6 +133,7 @@ func TestDevPushCommand(t *testing.T) {
 			Registry:        "localhost:5001",
 			ClusterRegistry: "k3d-registry-proxy.localhost:5000",
 			PlainHTTP:       true,
+			Builder:         "docker",
 		}, opts)
 	})
 
@@ -133,6 +145,39 @@ func TestDevPushCommand(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, kube.Options{Context: "k3d-dev2", Namespace: "ecosystem"}, opts.Kube)
+	})
+
+	t.Run("takes no build arguments from the environment", func(t *testing.T) {
+		isolateDevPushEnv(t)
+		t.Setenv("CLDK_DEV_BUILD_ARG", "FOO=bar")
+
+		opts, _, _, err := runDevPush(t, t.TempDir(), "--reg", "localhost:5001")
+
+		require.NoError(t, err)
+		assert.Empty(t, opts.BuildArgs)
+	})
+
+	t.Run("prints the pushed images before the pushed chart", func(t *testing.T) {
+		isolateDevPushEnv(t)
+		pusher := newSuccessfulDevPusher()
+		successful := pusher.PushFunc
+		pusher.PushFunc = func(ctx context.Context, opts devpush.Options) (devpush.Result, error) {
+			result, err := successful(ctx, opts)
+			result.Images = []devpush.PushedImage{
+				{Name: "nexus", Reference: "localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012"},
+				{Name: "sidecar", Reference: "localhost:5001/official/dogu/v3/images/sidecar:3.96.4-3-dev.20261103143012"},
+			}
+
+			return result, err
+		}
+
+		stdout, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dev-push", "--reg", "localhost:5001")
+
+		require.NoError(t, err)
+		assert.True(t, strings.HasPrefix(stdout,
+			"Pushed image  localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012\n"+
+				"Pushed image  localhost:5001/official/dogu/v3/images/sidecar:3.96.4-3-dev.20261103143012\n"+
+				"Pushed chart  oci://"+devPushChartRef+"\n"), stdout)
 	})
 
 	t.Run("prints the pushed chart, the applied dogu and how to watch it", func(t *testing.T) {
@@ -190,6 +235,9 @@ func TestDevPushCommand(t *testing.T) {
 			env:     map[string]string{envDevClusterRegistry: "oci://k3d-registry-proxy.localhost:5000"},
 			wantErr: "of --cluster-reg/CLDK_DEV_CLUSTER_REG",
 		},
+		{name: "a build argument without key", args: []string{"--reg", "localhost:5001", "--build-arg", "=bar"}, wantErr: `invalid build argument "=bar" of --build-arg: must be given as KEY=VALUE or KEY`},
+		{name: "an empty build argument", args: []string{"--reg", "localhost:5001", "--build-arg", ""}, wantErr: `invalid build argument "" of --build-arg`},
+		{name: "a build argument key with a space", args: []string{"--reg", "localhost:5001", "--build-arg", "FOO BAR=1"}, wantErr: `invalid build argument "FOO BAR=1"`},
 		{name: "a short flag for the namespace", args: []string{"--reg", "localhost:5001", "-n", "official"}, wantErr: "unknown shorthand flag: 'n'"},
 	}
 
@@ -215,7 +263,7 @@ func TestDevPushCommand(t *testing.T) {
 
 		for _, env := range []string{
 			envDevRegistry, envDevClusterRegistry, envDevNamespace, envDevPlainHTTP, envDevInsecure, envDevKubeContext,
-			envDevKubeNamespace,
+			envDevKubeNamespace, envDevBuilder, envDevPlatform,
 		} {
 			assert.Contains(t, stdout, "(env: "+env+")")
 		}

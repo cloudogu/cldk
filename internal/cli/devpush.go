@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/cloudogu/cldk/internal/devpush"
 	"github.com/cloudogu/cldk/internal/kube"
@@ -24,7 +25,12 @@ const (
 	envDevInsecure        = "CLDK_DEV_INSECURE"
 	envDevKubeContext     = "CLDK_DEV_KUBE_CONTEXT"
 	envDevKubeNamespace   = "CLDK_DEV_KUBE_NAMESPACE"
+	envDevBuilder         = "CLDK_DEV_BUILDER"
+	envDevPlatform        = "CLDK_DEV_PLATFORM"
 )
+
+// defaultBuilder is the build CLI if none is given.
+const defaultBuilder = "docker"
 
 // Flags of dev-push.
 const (
@@ -35,6 +41,9 @@ const (
 	flagInsecure        = "insecure"
 	flagKubeContext     = "kube-context"
 	flagKubeNamespace   = "kube-namespace"
+	flagBuilder         = "builder"
+	flagPlatform        = "platform"
+	flagBuildArg        = "build-arg"
 )
 
 // DevPusher pushes a dogu under development, see devpush.Pusher.
@@ -44,9 +53,12 @@ type DevPusher interface {
 
 const devPushLong = `Push a dogu v3 under development to a dev registry and install it in a cluster.
 
-dev-push reads cldk.yaml in the project directory, sets a new dev version <Chart.yaml version>-dev.<UTC timestamp> in
-a copy of the chart, lints and pushes it, and applies the dogu with this version and the dev chart in the cluster of
-the current kubeconfig context. The project directory is not changed.
+dev-push reads cldk.yaml in the project directory and creates a new dev version <Chart.yaml version>-dev.<UTC timestamp>.
+It builds each image of cldk.yaml with the build CLI (docker by default), tags it with the dev version and pushes it
+to the dev registry. A copy of the chart gets the dev version and the references of the built images on the cluster
+address of the dev registry; it is linted before the first build and pushed after the images. Finally, dev-push applies
+the dogu with this version and the dev chart in the cluster of the current kubeconfig context. The project directory
+is not changed.
 
 Settings are taken from the flags, the CLDK_DEV_* environment variables or the .env of the project directory, in this
 order. See the README for the dev mode of the dogu operator and for switching back to the regular dogu.`
@@ -58,6 +70,8 @@ const devPushExample = `  # .env in the dogu repository, e.g. for a k3d cluster 
 
   # cldk.yaml in the dogu repository
   namespace: official
+  images:
+    nexus: {}
 
   # push the dogu in the current directory
   cldk dev-push
@@ -66,7 +80,10 @@ const devPushExample = `  # .env in the dogu repository, e.g. for a k3d cluster 
   cldk --dir ../nexus dev-push --namespace personal
 
   # push the dogu to another cluster
-  cldk dev-push --kube-context k3d-dev2 --kube-namespace ecosystem`
+  cldk dev-push --kube-context k3d-dev2 --kube-namespace ecosystem
+
+  # build the images with podman for arm64 with a proxy from the environment
+  cldk dev-push --builder podman --platform linux/arm64 --build-arg HTTP_PROXY`
 
 // newDevPushCommand creates the dev-push command.
 func newDevPushCommand(pusher DevPusher) *cobra.Command {
@@ -110,6 +127,9 @@ func newDevPushCommand(pusher DevPusher) *cobra.Command {
 	cmd.Flags().Bool(flagInsecure, false, "allow TLS without certificate verification for the dev registry (env: "+envDevInsecure+")")
 	cmd.Flags().String(flagKubeContext, "", "kubeconfig context of the cluster, default the current context (env: "+envDevKubeContext+")")
 	cmd.Flags().String(flagKubeNamespace, "", "Kubernetes namespace of the dogu, default the namespace of the context, otherwise default (env: "+envDevKubeNamespace+")")
+	cmd.Flags().String(flagBuilder, "", "Docker compatible build CLI the images are built and pushed with, default "+defaultBuilder+" (env: "+envDevBuilder+")")
+	cmd.Flags().String(flagPlatform, "", "platform the images are built for as os/arch, passed to the builder (env: "+envDevPlatform+")")
+	cmd.Flags().StringArray(flagBuildArg, nil, "build argument KEY=VALUE for all images, overrides buildArgs of cldk.yaml; KEY alone takes the value from the environment; repeatable")
 
 	return cmd
 }
@@ -124,6 +144,17 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 		return devpush.Options{}, err
 	}
 
+	// GetStringArray would lose a single empty build argument, so the values are taken from the flag directly.
+	buildArgs := r.cmd.Flags().Lookup(flagBuildArg).Value.(pflag.SliceValue).GetSlice()
+
+	if err := validateBuildArgs(buildArgs); err != nil {
+		return devpush.Options{}, err
+	}
+
+	if len(buildArgs) == 0 {
+		buildArgs = nil
+	}
+
 	opts := devpush.Options{
 		PlainHTTP: plainHTTP,
 		Insecure:  insecure,
@@ -133,6 +164,13 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 			Context:   r.str(flagKubeContext, envDevKubeContext, "current context"),
 			Namespace: r.str(flagKubeNamespace, envDevKubeNamespace, "namespace of the context"),
 		},
+		Builder:   r.str(flagBuilder, envDevBuilder, defaultBuilder),
+		Platform:  r.str(flagPlatform, envDevPlatform, "platform of the builder"),
+		BuildArgs: buildArgs,
+	}
+
+	if opts.Builder == "" {
+		opts.Builder = defaultBuilder
 	}
 
 	if opts.Registry == "" {
@@ -158,6 +196,20 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 	return opts, nil
 }
 
+// validateBuildArgs checks that each build argument is given as KEY=VALUE or KEY, with a key without whitespace.
+func validateBuildArgs(args []string) error {
+	for _, arg := range args {
+		key, _, _ := strings.Cut(arg, "=")
+
+		if key == "" || strings.ContainsAny(key, " \t\n") {
+			return fmt.Errorf("invalid build argument %q of --%s: must be given as KEY=VALUE or KEY, e.g. HTTP_PROXY=http://proxy:3128",
+				arg, flagBuildArg)
+		}
+	}
+
+	return nil
+}
+
 // validateRegistryAddress checks that the address of a registry is given as host[:port], without scheme or path.
 func validateRegistryAddress(flag, env, address string) error {
 	parsed, err := url.Parse("//" + address)
@@ -171,6 +223,12 @@ func validateRegistryAddress(flag, env, address string) error {
 
 // printDevPushResult prints what has been pushed and applied and how to watch the dogu.
 func printDevPushResult(out io.Writer, result devpush.Result) error {
+	for _, img := range result.Images {
+		if _, err := fmt.Fprintf(out, "Pushed image  %s\n", img.Reference); err != nil {
+			return err
+		}
+	}
+
 	cluster := result.Cluster
 	_, err := fmt.Fprintf(out, "Pushed chart  oci://%s\nApplied dogu %s %s (context %s, namespace %s)\nWatch: kubectl --context %s -n %s get dogu %s -w\n",
 		result.ChartReference,
