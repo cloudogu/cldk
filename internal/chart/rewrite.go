@@ -1,14 +1,12 @@
-package release
+package chart
 
 // The rewriting of a chart is ported from ces-mirror (core/helm/patchTemplate.go, core/helm/patchTemplateApi.go and
 // core/helm/chartManager.go) instead of importing it, so that cldk does not depend on the mirror.
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"maps"
-	"os"
 	"path"
 	"slices"
 	"strings"
@@ -17,9 +15,7 @@ import (
 	"dario.cat/mergo"
 	"github.com/google/go-containerregistry/pkg/name"
 	"helm.sh/helm/v4/pkg/chart/common"
-	chart "helm.sh/helm/v4/pkg/chart/v2"
-	"helm.sh/helm/v4/pkg/chart/v2/loader"
-	chartutil "helm.sh/helm/v4/pkg/chart/v2/util"
+	helmchart "helm.sh/helm/v4/pkg/chart/v2"
 	"sigs.k8s.io/yaml"
 )
 
@@ -31,8 +27,8 @@ const (
 	patchAPIVersionV1       = "v1"
 )
 
-// imageChange is a changed entry of values.images in the mirror patch template.
-type imageChange struct {
+// Change is a changed entry of values.images in the mirror patch template.
+type Change struct {
 	// Key is the key of the entry in values.images.
 	Key string
 	// Old and New are the image references before and after the rewrite.
@@ -49,31 +45,30 @@ type patchTemplate struct {
 	Patches map[string]any `json:"patches"`
 }
 
-// rewriteChart points the packed chart archive to the released images and returns the repacked archive.
-func rewriteChart(archive []byte, targets map[string]string, explicitKeys map[string]string) ([]byte, []imageChange, error) {
-	c, err := loader.LoadArchive(bytes.NewReader(archive))
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to load chart archive: %w", err)
-	}
-
+// RewriteImages points the images of the chart in place to the targets, given as full references by target name, and
+// returns the changed entries of values.images, ordered by target name.
+// Each target is assigned to the entry of values.images in the mirror patch template with its key in keys or, without
+// one, to the entry whose repository has the target name. The patches of the template are then rendered against the
+// changed values and merged into the files of the chart.
+func RewriteImages(c *helmchart.Chart, targets map[string]string, keys map[string]string) ([]Change, error) {
 	templateFile := findFile(c.Files, mirrorPatchTemplateFile)
 	if templateFile == nil {
-		return nil, nil, fmt.Errorf("chart has no %s, which is required to release images", mirrorPatchTemplateFile)
+		return nil, fmt.Errorf("chart has no %s, which is required to release images", mirrorPatchTemplateFile)
 	}
 
 	var tpl patchTemplate
-	if err = yaml.Unmarshal(templateFile.Data, &tpl); err != nil {
-		return nil, nil, fmt.Errorf("failed to parse %s: %w", mirrorPatchTemplateFile, err)
+	if err := yaml.Unmarshal(templateFile.Data, &tpl); err != nil {
+		return nil, fmt.Errorf("failed to parse %s: %w", mirrorPatchTemplateFile, err)
 	}
 
 	images, err := tpl.images()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	changes, err := assignImages(images, targets, explicitKeys)
+	changes, err := assignImages(images, targets, keys)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	for _, change := range changes {
@@ -84,25 +79,20 @@ func rewriteChart(archive []byte, targets map[string]string, explicitKeys map[st
 
 	patches, err := tpl.renderPatches()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	for filename, patch := range patches {
 		if err = mergeIntoChartFile(c, filename, patch); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 
 	if templateFile.Data, err = yaml.Marshal(tpl); err != nil {
-		return nil, nil, fmt.Errorf("failed to write %s: %w", mirrorPatchTemplateFile, err)
+		return nil, fmt.Errorf("failed to write %s: %w", mirrorPatchTemplateFile, err)
 	}
 
-	repacked, err := packArchive(c)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return repacked, changes, nil
+	return changes, nil
 }
 
 // images returns the image references of values.images, keyed by their key.
@@ -128,7 +118,7 @@ func (tpl *patchTemplate) images() (map[string]string, error) {
 
 // assignImages assigns each target to the entry of images with its explicit key or, without one, to the entry whose
 // repository has the target name, and returns the resulting changes, ordered by target name.
-func assignImages(images map[string]string, targets map[string]string, explicitKeys map[string]string) ([]imageChange, error) {
+func assignImages(images map[string]string, targets map[string]string, explicitKeys map[string]string) ([]Change, error) {
 	keysByName := map[string][]string{}
 
 	for key, ref := range images {
@@ -141,7 +131,7 @@ func assignImages(images map[string]string, targets map[string]string, explicitK
 		keysByName[repoName] = append(keysByName[repoName], key)
 	}
 
-	changes := make([]imageChange, 0, len(targets))
+	changes := make([]Change, 0, len(targets))
 	targetByKey := map[string]string{}
 
 	for _, targetName := range slices.Sorted(maps.Keys(targets)) {
@@ -155,7 +145,7 @@ func assignImages(images map[string]string, targets map[string]string, explicitK
 		}
 
 		targetByKey[key] = targets[targetName]
-		changes = append(changes, imageChange{Key: key, Old: images[key], New: targets[targetName]})
+		changes = append(changes, Change{Key: key, Old: images[key], New: targets[targetName]})
 	}
 
 	return changes, nil
@@ -256,7 +246,7 @@ func patchTemplateFuncs() template.FuncMap {
 }
 
 // mergeIntoChartFile merges the patch into the YAML file of the chart with the given name, overriding existing values.
-func mergeIntoChartFile(c *chart.Chart, filename string, patch map[string]any) error {
+func mergeIntoChartFile(c *helmchart.Chart, filename string, patch map[string]any) error {
 	if filename == valuesFile {
 		if c.Values == nil {
 			c.Values = map[string]any{}
@@ -315,28 +305,4 @@ func findFile(files []*common.File, filename string) *common.File {
 	}
 
 	return nil
-}
-
-// packArchive packs the chart like "helm package" does and returns the archive.
-func packArchive(c *chart.Chart) (archive []byte, err error) {
-	dir, err := os.MkdirTemp("", "cldk-chart-")
-	if err != nil {
-		return nil, fmt.Errorf("failed to pack chart: %w", err)
-	}
-
-	defer func() {
-		err = errors.Join(err, os.RemoveAll(dir))
-	}()
-
-	archivePath, err := chartutil.Save(c, dir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to pack chart: %w", err)
-	}
-
-	archive, err = os.ReadFile(archivePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to pack chart: %w", err)
-	}
-
-	return archive, nil
 }

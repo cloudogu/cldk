@@ -1,4 +1,4 @@
-package release
+package chart
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"helm.sh/helm/v4/pkg/chart/common"
-	chart "helm.sh/helm/v4/pkg/chart/v2"
+	helmchart "helm.sh/helm/v4/pkg/chart/v2"
 	"helm.sh/helm/v4/pkg/chart/v2/loader"
 	"sigs.k8s.io/yaml"
 )
@@ -43,7 +43,7 @@ func chartYAML(t *testing.T, archive []byte, name string) map[string]any {
 }
 
 // packChartWith packs the test chart testdata/charts/<name> after modifying it and returns the archive.
-func packChartWith(t *testing.T, name string, modify func(c *chart.Chart)) []byte {
+func packChartWith(t *testing.T, name string, modify func(c *helmchart.Chart)) []byte {
 	t.Helper()
 
 	c, err := loader.LoadDir(filepath.Join("testdata", "charts", name))
@@ -51,20 +51,40 @@ func packChartWith(t *testing.T, name string, modify func(c *chart.Chart)) []byt
 
 	modify(c)
 
-	archive, err := packArchive(c)
+	archive, err := Pack(c)
 	require.NoError(t, err)
 
 	return archive
 }
 
+// rewriteChart loads the chart archive, rewrites its images and returns the repacked archive with the changes.
+func rewriteChart(archive []byte, targets map[string]string, keys map[string]string) ([]byte, []Change, error) {
+	c, err := LoadArchive(archive)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	changes, err := RewriteImages(c, targets, keys)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	repacked, err := Pack(c)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return repacked, changes, nil
+}
+
 // withMirrorPatchTemplate replaces the mirror patch template of a chart.
-func withMirrorPatchTemplate(content string) func(c *chart.Chart) {
-	return func(c *chart.Chart) {
+func withMirrorPatchTemplate(content string) func(c *helmchart.Chart) {
+	return func(c *helmchart.Chart) {
 		findFile(c.Files, mirrorPatchTemplateFile).Data = []byte(content)
 	}
 }
 
-func TestRewriteChart(t *testing.T) {
+func TestRewriteImages(t *testing.T) {
 	const nexusTarget = "registry.example.com/testing/dogu/v3/images/nexus:3.96.4-3"
 
 	t.Run("writes the target reference into the image list of the mirror patch template", func(t *testing.T) {
@@ -120,7 +140,7 @@ func TestRewriteChart(t *testing.T) {
 		rewritten, changes, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget, "postgres": postgresTarget}, nil)
 
 		require.NoError(t, err)
-		assert.Equal(t, []imageChange{
+		assert.Equal(t, []Change{
 			{Key: "nexus", Old: "registry.cloudogu.com/official/nexus:3.96.4-3", New: nexusTarget},
 			{Key: "postgresql", Old: "docker.io/library/postgres:14.18", New: postgresTarget},
 		}, changes)
@@ -135,7 +155,7 @@ func TestRewriteChart(t *testing.T) {
 		_, changes, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget}, nil)
 
 		require.NoError(t, err)
-		assert.Equal(t, []imageChange{{Key: "nexus", Old: "registry.cloudogu.com/official/nexus:3.96.4-3", New: nexusTarget}}, changes)
+		assert.Equal(t, []Change{{Key: "nexus", Old: "registry.cloudogu.com/official/nexus:3.96.4-3", New: nexusTarget}}, changes)
 	})
 
 	t.Run("assigns an image to an explicit key instead of the entry with its name", func(t *testing.T) {
@@ -145,7 +165,7 @@ func TestRewriteChart(t *testing.T) {
 		rewritten, changes, err := rewriteChart(archive, map[string]string{"sidecar": saManagerTarget}, map[string]string{"sidecar": "nexusSaManager"})
 
 		require.NoError(t, err)
-		assert.Equal(t, []imageChange{
+		assert.Equal(t, []Change{
 			{Key: "nexusSaManager", Old: "registry.cloudogu.com/k8s/service-account-producer-sidecar:0.1.3", New: saManagerTarget},
 		}, changes)
 		assert.Equal(t, map[string]any{
@@ -166,7 +186,7 @@ values:
 		_, changes, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget}, map[string]string{"nexus": "nexus"})
 
 		require.NoError(t, err)
-		assert.Equal(t, []imageChange{{Key: "nexus", Old: "registry.cloudogu.com/official/nexus:3.96.4-3", New: nexusTarget}}, changes)
+		assert.Equal(t, []Change{{Key: "nexus", Old: "registry.cloudogu.com/official/nexus:3.96.4-3", New: nexusTarget}}, changes)
 	})
 
 	t.Run("keeps the patches of the mirror patch template", func(t *testing.T) {
@@ -197,7 +217,7 @@ values:
 	})
 
 	t.Run("patches a template of the chart", func(t *testing.T) {
-		archive := packChartWith(t, "nexus", func(c *chart.Chart) {
+		archive := packChartWith(t, "nexus", func(c *helmchart.Chart) {
 			c.Templates = append(c.Templates, &common.File{Name: "templates/images.yaml", Data: []byte("nexus:\n  image: old\n  keep: true\n")})
 			withMirrorPatchTemplate(`apiVersion: v1
 values:
@@ -219,14 +239,14 @@ patches:
 	t.Run("fails", func(t *testing.T) {
 		tests := []struct {
 			name    string
-			modify  func(c *chart.Chart)
+			modify  func(c *helmchart.Chart)
 			targets map[string]string
 			keys    map[string]string
 			wantErr string
 		}{
 			{
 				name: "without mirror patch template",
-				modify: func(c *chart.Chart) {
+				modify: func(c *helmchart.Chart) {
 					c.Files = slices.DeleteFunc(c.Files, func(f *common.File) bool { return f.Name == mirrorPatchTemplateFile })
 				},
 				wantErr: "chart has no mirror-patch-tpl.yaml",
@@ -300,7 +320,7 @@ patches:
 			t.Run(tt.name, func(t *testing.T) {
 				modify := tt.modify
 				if modify == nil {
-					modify = func(*chart.Chart) {}
+					modify = func(*helmchart.Chart) {}
 				}
 
 				targets := tt.targets

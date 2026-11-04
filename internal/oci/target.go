@@ -1,4 +1,5 @@
-package release
+// Package oci accesses the OCI registries dogu v3 images and charts are published to.
+package oci
 
 import (
 	"fmt"
@@ -6,7 +7,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 )
 
-// Target is the registry namespace a release is published to, including how to access the registry.
+// Target is the registry namespace dogu images and charts are published to, including how to access the registry.
 type Target struct {
 	// Registry is the registry host, e.g. "registry.cloudogu.com".
 	Registry string
@@ -22,18 +23,18 @@ type Target struct {
 	InsecureSkipTLSVerify bool
 }
 
-// chartRepository returns the repository of a dogu chart in the target.
-func (t Target) chartRepository(chartName string) string {
+// ChartRepository returns the repository of a dogu chart in the target.
+func (t Target) ChartRepository(chartName string) string {
 	return fmt.Sprintf("%s/%s/dogu/v3/charts/%s", t.Registry, t.Namespace, chartName)
 }
 
-// imageRepository returns the repository of a dogu image in the target.
-func (t Target) imageRepository(imageName string) string {
+// ImageRepository returns the repository of a dogu image in the target.
+func (t Target) ImageRepository(imageName string) string {
 	return fmt.Sprintf("%s/%s/dogu/v3/images/%s", t.Registry, t.Namespace, imageName)
 }
 
-// nameOptions returns the options to parse references of the target registry.
-func (t Target) nameOptions() []name.Option {
+// NameOptions returns the options to parse references of the target registry.
+func (t Target) NameOptions() []name.Option {
 	if t.PlainHTTP {
 		return []name.Option{name.Insecure}
 	}

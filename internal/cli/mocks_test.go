@@ -8,6 +8,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/cloudogu/cldk/internal/oci"
 	"github.com/cloudogu/cldk/internal/release"
 )
 
@@ -21,10 +22,10 @@ var _ Releaser = &MockReleaser{}
 //
 //		// make and configure a mocked Releaser
 //		mockedReleaser := &MockReleaser{
-//			PlanFunc: func(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Plan, error) {
+//			PlanFunc: func(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Plan, error) {
 //				panic("mock out the Plan method")
 //			},
-//			ReleaseFunc: func(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Result, error) {
+//			ReleaseFunc: func(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Result, error) {
 //				panic("mock out the Release method")
 //			},
 //		}
@@ -35,10 +36,10 @@ var _ Releaser = &MockReleaser{}
 //	}
 type MockReleaser struct {
 	// PlanFunc mocks the Plan method.
-	PlanFunc func(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Plan, error)
+	PlanFunc func(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Plan, error)
 
 	// ReleaseFunc mocks the Release method.
-	ReleaseFunc func(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Result, error)
+	ReleaseFunc func(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Result, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -49,7 +50,7 @@ type MockReleaser struct {
 			// ChartPath is the chartPath argument value.
 			ChartPath string
 			// Target is the target argument value.
-			Target release.Target
+			Target oci.Target
 			// Opts is the opts argument value.
 			Opts release.Options
 		}
@@ -60,7 +61,7 @@ type MockReleaser struct {
 			// ChartPath is the chartPath argument value.
 			ChartPath string
 			// Target is the target argument value.
-			Target release.Target
+			Target oci.Target
 			// Opts is the opts argument value.
 			Opts release.Options
 		}
@@ -70,14 +71,14 @@ type MockReleaser struct {
 }
 
 // Plan calls PlanFunc.
-func (mock *MockReleaser) Plan(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Plan, error) {
+func (mock *MockReleaser) Plan(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Plan, error) {
 	if mock.PlanFunc == nil {
 		panic("MockReleaser.PlanFunc: method is nil but Releaser.Plan was just called")
 	}
 	callInfo := struct {
 		Ctx       context.Context
 		ChartPath string
-		Target    release.Target
+		Target    oci.Target
 		Opts      release.Options
 	}{
 		Ctx:       ctx,
@@ -98,13 +99,13 @@ func (mock *MockReleaser) Plan(ctx context.Context, chartPath string, target rel
 func (mock *MockReleaser) PlanCalls() []struct {
 	Ctx       context.Context
 	ChartPath string
-	Target    release.Target
+	Target    oci.Target
 	Opts      release.Options
 } {
 	var calls []struct {
 		Ctx       context.Context
 		ChartPath string
-		Target    release.Target
+		Target    oci.Target
 		Opts      release.Options
 	}
 	mock.lockPlan.RLock()
@@ -114,14 +115,14 @@ func (mock *MockReleaser) PlanCalls() []struct {
 }
 
 // Release calls ReleaseFunc.
-func (mock *MockReleaser) Release(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Result, error) {
+func (mock *MockReleaser) Release(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Result, error) {
 	if mock.ReleaseFunc == nil {
 		panic("MockReleaser.ReleaseFunc: method is nil but Releaser.Release was just called")
 	}
 	callInfo := struct {
 		Ctx       context.Context
 		ChartPath string
-		Target    release.Target
+		Target    oci.Target
 		Opts      release.Options
 	}{
 		Ctx:       ctx,
@@ -142,13 +143,13 @@ func (mock *MockReleaser) Release(ctx context.Context, chartPath string, target 
 func (mock *MockReleaser) ReleaseCalls() []struct {
 	Ctx       context.Context
 	ChartPath string
-	Target    release.Target
+	Target    oci.Target
 	Opts      release.Options
 } {
 	var calls []struct {
 		Ctx       context.Context
 		ChartPath string
-		Target    release.Target
+		Target    oci.Target
 		Opts      release.Options
 	}
 	mock.lockRelease.RLock()

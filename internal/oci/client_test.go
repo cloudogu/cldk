@@ -1,4 +1,4 @@
-package release
+package oci
 
 import (
 	"encoding/base64"
@@ -45,6 +45,18 @@ func authRecordingRegistry(t *testing.T) (host string, recorded func() []string)
 
 		return append([]string(nil), headers...)
 	}
+}
+
+// isolateCredentialConfig points the docker and helm credential configuration to empty directories and returns them.
+func isolateCredentialConfig(t *testing.T) (dockerConfig, helmConfig string) {
+	t.Helper()
+
+	dockerConfig = t.TempDir()
+	helmConfig = t.TempDir()
+	t.Setenv("DOCKER_CONFIG", dockerConfig)
+	t.Setenv("HELM_CONFIG_HOME", helmConfig)
+
+	return dockerConfig, helmConfig
 }
 
 func basicAuth(user, password string) string {

@@ -7,6 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+
+	"github.com/cloudogu/cldk/internal/chart"
+	"github.com/cloudogu/cldk/internal/oci"
+	helmchart "helm.sh/helm/v4/pkg/chart/v2"
 )
 
 // Options are the settings of a release besides the target.
@@ -108,7 +112,7 @@ func NewReleaser() *Releaser {
 
 // Plan computes the release of the packed chart archive (.tgz) at chartPath to the target including all checks of the
 // sources and targets, but pushes nothing. Conflicts in the target are part of the plan, see Plan.Conflicts.
-func (r *Releaser) Plan(ctx context.Context, chartPath string, target Target, opts Options) (Plan, error) {
+func (r *Releaser) Plan(ctx context.Context, chartPath string, target oci.Target, opts Options) (Plan, error) {
 	p, err := newReleasePlan(ctx, chartPath, target, opts)
 	if err != nil {
 		return Plan{}, err
@@ -120,7 +124,7 @@ func (r *Releaser) Plan(ctx context.Context, chartPath string, target Target, op
 // Release publishes the packed chart archive (.tgz) at chartPath to the target.
 // It pushes nothing if the plan has conflicts. The images are released before the chart, so that a released chart
 // never refers to missing images.
-func (r *Releaser) Release(ctx context.Context, chartPath string, target Target, opts Options) (Result, error) {
+func (r *Releaser) Release(ctx context.Context, chartPath string, target oci.Target, opts Options) (Result, error) {
 	p, err := newReleasePlan(ctx, chartPath, target, opts)
 	if err != nil {
 		return Result{}, err
@@ -136,8 +140,8 @@ func (r *Releaser) Release(ctx context.Context, chartPath string, target Target,
 
 // releasePlan is a computed release with everything needed to push it.
 type releasePlan struct {
-	publisher *publisher
-	images    []checkedImage
+	client *oci.Client
+	images []checkedImage
 	// archive is the chart archive to push, rewritten to the targets of the images.
 	archive     []byte
 	chartRef    string
@@ -145,13 +149,13 @@ type releasePlan struct {
 }
 
 // newReleasePlan reads and rewrites the chart, resolves the images and checks all targets without pushing anything.
-func newReleasePlan(ctx context.Context, chartPath string, target Target, opts Options) (*releasePlan, error) {
+func newReleasePlan(ctx context.Context, chartPath string, target oci.Target, opts Options) (*releasePlan, error) {
 	archive, err := os.ReadFile(chartPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read chart: %w", err)
 	}
 
-	meta, err := loadChartMetadata(archive)
+	c, err := chart.LoadArchive(archive)
 	if err != nil {
 		return nil, fmt.Errorf("%s is not a valid chart archive: %w", chartPath, err)
 	}
@@ -172,31 +176,31 @@ func newReleasePlan(ctx context.Context, chartPath string, target Target, opts O
 	}
 
 	if len(specs) > 0 {
-		archive, err = rewriteChartForImages(archive, specs, keys)
+		archive, err = rewriteChartForImages(c, specs, keys)
 		if err != nil {
 			return nil, fmt.Errorf("failed to rewrite chart %s: %w", chartPath, err)
 		}
 	}
 
-	pub, err := newPublisher(target)
+	client, err := oci.NewClient(target)
 	if err != nil {
 		return nil, err
 	}
 
-	ref := target.chartRepository(meta.Name) + ":" + meta.Version
+	ref := target.ChartRepository(c.Metadata.Name) + ":" + c.Metadata.Version
 
-	images, err := pub.checkImages(ctx, resolved, opts.Force)
+	images, err := checkImages(ctx, client, resolved, opts.Force)
 	if err != nil {
 		return nil, err
 	}
 
-	chartStatus, err := pub.checkChart(ref, opts.Force)
+	chartStatus, err := checkChart(ctx, client, ref, opts.Force)
 	if err != nil {
 		return nil, err
 	}
 
 	return &releasePlan{
-		publisher:   pub,
+		client:      client,
 		images:      images,
 		archive:     archive,
 		chartRef:    ref,
@@ -220,7 +224,7 @@ func (p *releasePlan) push(ctx context.Context) (Result, error) {
 	result := Result{ChartReference: p.chartRef, ChartStatus: p.chartStatus}
 
 	for _, img := range p.images {
-		released, err := p.publisher.pushImage(ctx, img)
+		released, err := pushCheckedImage(ctx, p.client, img)
 		if err != nil {
 			return Result{}, err
 		}
@@ -228,7 +232,7 @@ func (p *releasePlan) push(ctx context.Context) (Result, error) {
 		result.Images = append(result.Images, released)
 	}
 
-	digest, err := p.publisher.pushChart(p.archive, p.chartRef)
+	digest, err := p.client.PushChart(ctx, p.archive, p.chartRef)
 	if err != nil {
 		return Result{}, err
 	}
@@ -238,15 +242,15 @@ func (p *releasePlan) push(ctx context.Context) (Result, error) {
 	return result, nil
 }
 
-// rewriteChartForImages points the chart archive to the target references of the images.
-func rewriteChartForImages(archive []byte, images []imageSpec, keys map[string]string) ([]byte, error) {
+// rewriteChartForImages points the chart to the target references of the images and returns the repacked archive.
+func rewriteChartForImages(c *helmchart.Chart, images []imageSpec, keys map[string]string) ([]byte, error) {
 	targets := make(map[string]string, len(images))
 
 	for _, img := range images {
 		targets[img.targetName] = img.target.String()
 	}
 
-	rewritten, changes, err := rewriteChart(archive, targets, keys)
+	changes, err := chart.RewriteImages(c, targets, keys)
 	if err != nil {
 		return nil, err
 	}
@@ -255,5 +259,5 @@ func rewriteChartForImages(archive []byte, images []imageSpec, keys map[string]s
 		slog.Debug("rewriting image of chart", "key", change.Key, "old", change.Old, "new", change.New)
 	}
 
-	return rewritten, nil
+	return chart.Pack(c)
 }

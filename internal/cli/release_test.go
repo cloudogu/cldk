@@ -8,16 +8,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cloudogu/cldk/internal/oci"
+
 	"github.com/cloudogu/cldk/internal/release"
 )
 
 // newSuccessfulReleaser returns a releaser mock that plans and releases every chart as nexus 3.96.4-3.
 func newSuccessfulReleaser() *MockReleaser {
 	return &MockReleaser{
-		PlanFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Plan, error) {
+		PlanFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Plan, error) {
 			return release.Plan{ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3"}, nil
 		},
-		ReleaseFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Result, error) {
+		ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
 			return release.Result{
 				ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3",
 				ChartDigest:    "sha256:1234",
@@ -45,7 +47,7 @@ func TestReleaseCommand(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
 		assert.Equal(t, "nexus-3.96.4-3.tgz", releaser.ReleaseCalls()[0].ChartPath)
-		assert.Equal(t, release.Target{
+		assert.Equal(t, oci.Target{
 			Registry:              "staging-registry.cloudogu.com",
 			Namespace:             "testing",
 			User:                  "releaser",
@@ -63,7 +65,7 @@ func TestReleaseCommand(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
-		assert.Equal(t, release.Target{Registry: "registry.cloudogu.com", Namespace: "testing"}, releaser.ReleaseCalls()[0].Target)
+		assert.Equal(t, oci.Target{Registry: "registry.cloudogu.com", Namespace: "testing"}, releaser.ReleaseCalls()[0].Target)
 	})
 
 	t.Run("passes the images to the releaser", func(t *testing.T) {
@@ -116,14 +118,14 @@ func TestReleaseCommand(t *testing.T) {
 		assert.Empty(t, releaser.ReleaseCalls())
 		require.Len(t, releaser.PlanCalls(), 1)
 		assert.Equal(t, "nexus-3.96.4-3.tgz", releaser.PlanCalls()[0].ChartPath)
-		assert.Equal(t, release.Target{Registry: "registry.cloudogu.com", Namespace: "testing"}, releaser.PlanCalls()[0].Target)
+		assert.Equal(t, oci.Target{Registry: "registry.cloudogu.com", Namespace: "testing"}, releaser.PlanCalls()[0].Target)
 		assert.Equal(t, release.Options{Force: true}, releaser.PlanCalls()[0].Opts)
 	})
 
 	t.Run("marks overwritten images and charts", func(t *testing.T) {
 		isolateCredentialEnv(t)
 		releaser := &MockReleaser{
-			ReleaseFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Result, error) {
+			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
 				return release.Result{
 					Images: []release.ReleasedImage{
 						{Source: "ci.example.com/nexus:3.96.4-3", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3", Digest: "sha256:abcd", Status: release.StatusOverwritten},
@@ -145,7 +147,7 @@ func TestReleaseCommand(t *testing.T) {
 	t.Run("marks skipped images", func(t *testing.T) {
 		isolateCredentialEnv(t)
 		releaser := &MockReleaser{
-			ReleaseFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Result, error) {
+			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
 				return release.Result{
 					Images: []release.ReleasedImage{
 						{Source: "ci.example.com/nexus:3.96.4-3", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3", Digest: "sha256:abcd", Status: release.StatusSkipped},
@@ -168,7 +170,7 @@ func TestReleaseCommand(t *testing.T) {
 	t.Run("prints each released image before the chart", func(t *testing.T) {
 		isolateCredentialEnv(t)
 		releaser := &MockReleaser{
-			ReleaseFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Result, error) {
+			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
 				return release.Result{
 					Images: []release.ReleasedImage{
 						{Source: "ci.example.com/nexus:3.96.4-3", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3", Digest: "sha256:abcd"},
@@ -200,7 +202,7 @@ func TestReleaseCommand(t *testing.T) {
 	t.Run("returns the error of the releaser", func(t *testing.T) {
 		isolateCredentialEnv(t)
 		releaser := &MockReleaser{
-			ReleaseFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Result, error) {
+			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
 				return release.Result{}, errors.New("registry unavailable")
 			},
 		}
@@ -321,7 +323,7 @@ const dryRunOutput = "Dry run, nothing has been pushed.\n" +
 // newPlanningReleaser returns a releaser mock that plans the given plan.
 func newPlanningReleaser(plan release.Plan, err error) *MockReleaser {
 	return &MockReleaser{
-		PlanFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Plan, error) {
+		PlanFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Plan, error) {
 			return plan, err
 		},
 	}

@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cloudogu/cldk/internal/chart"
+	"github.com/cloudogu/cldk/internal/oci"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
@@ -53,7 +55,7 @@ type checkedImage struct {
 }
 
 // parseImages parses the images as given in Options.Images and computes their targets without accessing a registry.
-func parseImages(specs []string, target Target) ([]imageSpec, error) {
+func parseImages(specs []string, target oci.Target) ([]imageSpec, error) {
 	images := make([]imageSpec, 0, len(specs))
 	sourceByTargetName := map[string]string{}
 
@@ -75,7 +77,7 @@ func parseImages(specs []string, target Target) ([]imageSpec, error) {
 }
 
 // parseImage parses an image given as "<source>" or "<source>=<target name>:<tag>".
-func parseImage(spec string, target Target) (imageSpec, error) {
+func parseImage(spec string, target oci.Target) (imageSpec, error) {
 	source, explicitTarget, hasExplicitTarget := strings.Cut(spec, "=")
 
 	sourceRef, err := name.ParseReference(source)
@@ -88,10 +90,8 @@ func parseImage(spec string, target Target) (imageSpec, error) {
 		return imageSpec{}, fmt.Errorf("image %s has no tag", source)
 	}
 
-	// Without a registry, the image would silently be pulled from docker.io, which hardly ever is the intended source.
-	if !hasRegistry(source) {
-		return imageSpec{}, fmt.Errorf("image %s has no registry, give it explicitly, e.g. docker.io/%s:%s",
-			source, sourceTag.RepositoryStr(), sourceTag.TagStr())
+	if err = chart.ValidateImageRef(source); err != nil {
+		return imageSpec{}, err
 	}
 
 	targetName := path.Base(sourceTag.RepositoryStr())
@@ -104,20 +104,12 @@ func parseImage(spec string, target Target) (imageSpec, error) {
 		}
 	}
 
-	targetTag, err := name.NewTag(target.imageRepository(targetName)+":"+tag, target.nameOptions()...)
+	targetTag, err := name.NewTag(target.ImageRepository(targetName)+":"+tag, target.NameOptions()...)
 	if err != nil {
 		return imageSpec{}, fmt.Errorf("invalid target %s:%s for image %s: %w", targetName, tag, source, err)
 	}
 
 	return imageSpec{source: sourceTag, targetName: targetName, target: targetTag}, nil
-}
-
-// hasRegistry reports whether the image reference starts with a registry. Like docker, it takes the first path segment
-// as registry if it contains a "." or ":" or is "localhost".
-func hasRegistry(ref string) bool {
-	first, _, hasPath := strings.Cut(ref, "/")
-
-	return hasPath && (strings.ContainsAny(first, ".:") || first == "localhost")
 }
 
 // parseImageKeys parses the image keys as given in Options.ImageKeys and returns the keys by target name.

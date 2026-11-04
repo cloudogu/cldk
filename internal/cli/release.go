@@ -9,6 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cloudogu/cldk/internal/oci"
+
 	"github.com/cloudogu/cldk/internal/release"
 )
 
@@ -20,13 +22,13 @@ const (
 
 // Releaser plans and publishes a release, see release.Releaser.
 type Releaser interface {
-	Plan(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Plan, error)
-	Release(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Result, error)
+	Plan(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Plan, error)
+	Release(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Result, error)
 }
 
 func newReleaseCommand(releaser Releaser) *cobra.Command {
 	var (
-		target release.Target
+		target oci.Target
 		opts   release.Options
 		dryRun bool
 	)

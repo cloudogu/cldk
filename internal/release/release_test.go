@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/cloudogu/cldk/internal/oci"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
@@ -66,8 +67,8 @@ func newTargetRegistryWithBasicAuth(t *testing.T, user, password string) string 
 }
 
 // testTarget returns a target for the namespace "testing" of a test registry without TLS.
-func testTarget(reg string) Target {
-	return Target{Registry: reg, Namespace: "testing", PlainHTTP: true}
+func testTarget(reg string) oci.Target {
+	return oci.Target{Registry: reg, Namespace: "testing", PlainHTTP: true}
 }
 
 // packChart packs the test chart testdata/charts/<name> like "helm package" does and returns the path and content of
@@ -246,14 +247,14 @@ func TestReleasePlainHTTP(t *testing.T) {
 	chartPath, _ := packChart(t, "nexus")
 
 	t.Run("fails on a registry without TLS", func(t *testing.T) {
-		_, err := NewReleaser().Release(context.Background(), chartPath, Target{Registry: reg, Namespace: "testing"}, Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, oci.Target{Registry: reg, Namespace: "testing"}, Options{})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "server gave HTTP response to HTTPS client")
 	})
 
 	t.Run("PlainHTTP allows a registry without TLS", func(t *testing.T) {
-		_, err := NewReleaser().Release(context.Background(), chartPath, Target{Registry: reg, Namespace: "testing", PlainHTTP: true}, Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, oci.Target{Registry: reg, Namespace: "testing", PlainHTTP: true}, Options{})
 
 		require.NoError(t, err)
 
@@ -275,14 +276,14 @@ func TestReleaseInsecureSkipTLSVerify(t *testing.T) {
 	chartPath, _ := packChart(t, "nexus")
 
 	t.Run("fails on a registry with an untrusted certificate", func(t *testing.T) {
-		_, err := NewReleaser().Release(context.Background(), chartPath, Target{Registry: reg, Namespace: "testing"}, Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, oci.Target{Registry: reg, Namespace: "testing"}, Options{})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "certificate")
 	})
 
 	t.Run("InsecureSkipTLSVerify allows an untrusted certificate", func(t *testing.T) {
-		target := Target{Registry: reg, Namespace: "testing", InsecureSkipTLSVerify: true}
+		target := oci.Target{Registry: reg, Namespace: "testing", InsecureSkipTLSVerify: true}
 
 		_, err := NewReleaser().Release(context.Background(), chartPath, target, Options{})
 
