@@ -137,3 +137,125 @@ func TestValidateImageRef(t *testing.T) {
 		})
 	}
 }
+
+// copyChart copies the test chart testdata/charts/<name> into a new temporary directory, writes the given additional
+// files into it and returns the chart directory.
+func copyChart(t *testing.T, name string, files map[string]string) string {
+	t.Helper()
+
+	dir := filepath.Join(t.TempDir(), name)
+	require.NoError(t, os.CopyFS(dir, os.DirFS(filepath.Join("testdata", "charts", name))))
+
+	for file, content := range files {
+		path := filepath.Join(dir, file)
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	}
+
+	return dir
+}
+
+const chartYAMLWithDependency = `apiVersion: v2
+name: nexus
+version: 3.96.4-3
+dependencies:
+  - name: postgresql
+    version: 14.18.0
+    repository: oci://registry.example.com/charts
+`
+
+func TestLoadDir(t *testing.T) {
+	t.Run("loads the chart without the files ignored by .helmignore", func(t *testing.T) {
+		dir := copyChart(t, "nexus", map[string]string{"README.md": "# Nexus"})
+
+		c, err := LoadDir(dir)
+
+		require.NoError(t, err)
+		assert.Equal(t, "nexus", c.Metadata.Name)
+		assert.Equal(t, "3.96.4-3", c.Metadata.Version)
+		assert.Nil(t, findFile(c.Files, "README.md"), "README.md is ignored by .helmignore")
+		assert.NotNil(t, findFile(c.Files, mirrorPatchTemplateFile))
+	})
+
+	t.Run("loads a chart whose dependencies are in charts/", func(t *testing.T) {
+		dir := copyChart(t, "nexus", map[string]string{
+			"Chart.yaml":                           chartYAMLWithDependency,
+			"charts/postgresql/Chart.yaml":         "apiVersion: v2\nname: postgresql\nversion: 14.18.0\n",
+			"charts/postgresql/values.yaml":        "",
+			"charts/postgresql/templates/.gitkeep": "",
+		})
+
+		c, err := LoadDir(dir)
+
+		require.NoError(t, err)
+		assert.Len(t, c.Dependencies(), 1)
+	})
+
+	t.Run("aborts with a hint to helm dependency build if a dependency is missing", func(t *testing.T) {
+		dir := copyChart(t, "nexus", map[string]string{"Chart.yaml": chartYAMLWithDependency})
+
+		_, err := LoadDir(dir)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "postgresql")
+		assert.Contains(t, err.Error(), "helm dependency build "+dir)
+	})
+
+	t.Run("aborts if the directory is no chart", func(t *testing.T) {
+		dir := t.TempDir()
+
+		_, err := LoadDir(dir)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), dir)
+	})
+}
+
+func TestLint(t *testing.T) {
+	t.Run("passes a valid chart", func(t *testing.T) {
+		c, err := LoadDir(copyChart(t, "nexus", nil))
+		require.NoError(t, err)
+
+		warnings, err := Lint(c)
+
+		require.NoError(t, err)
+		assert.Empty(t, warnings)
+	})
+
+	t.Run("returns warnings without failing", func(t *testing.T) {
+		// helm lint only warns about a resource name that kubernetes would reject.
+		c, err := LoadDir(copyChart(t, "nexus", map[string]string{
+			"templates/configmap.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: Invalid_Name\n",
+		}))
+		require.NoError(t, err)
+
+		warnings, err := Lint(c)
+
+		require.NoError(t, err)
+		require.NotEmpty(t, warnings)
+		assert.Contains(t, warnings[0], "Invalid_Name")
+	})
+
+	t.Run("fails on errors including values.schema.json", func(t *testing.T) {
+		c, err := LoadDir(copyChart(t, "nexus", map[string]string{
+			"values.schema.json": `{"type": "object", "required": ["missingValue"]}`,
+		}))
+		require.NoError(t, err)
+
+		_, err = Lint(c)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "missingValue")
+	})
+
+	t.Run("lints the chart in memory with its changes", func(t *testing.T) {
+		c, err := LoadDir(copyChart(t, "nexus", nil))
+		require.NoError(t, err)
+		findFile(c.Templates, "templates/statefulset.yaml").Data = []byte("replicas: {{ .Values.missing.replicas }}\n")
+
+		_, err = Lint(c)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "missing")
+	})
+}

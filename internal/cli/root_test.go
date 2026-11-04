@@ -12,8 +12,16 @@ import (
 func runCldk(t *testing.T, releaser Releaser, args ...string) (stdout string, stderr string, err error) {
 	t.Helper()
 
+	return runCldkWith(t, releaser, &MockDevPusher{}, args...)
+}
+
+// runCldkWith executes the root command in-process with the given releaser, dev pusher and arguments and returns
+// stdout and stderr.
+func runCldkWith(t *testing.T, releaser Releaser, devPusher DevPusher, args ...string) (stdout string, stderr string, err error) {
+	t.Helper()
+
 	var out, errOut bytes.Buffer
-	cmd := NewRootCommand(BuildInfo{Version: "1.2.3", CommitID: "abc123"}, releaser)
+	cmd := NewRootCommand(BuildInfo{Version: "1.2.3", CommitID: "abc123"}, releaser, devPusher)
 	cmd.SetOut(&out)
 	cmd.SetErr(&errOut)
 	cmd.SetArgs(args)

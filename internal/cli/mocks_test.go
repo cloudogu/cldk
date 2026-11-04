@@ -8,9 +8,82 @@ import (
 	"context"
 	"sync"
 
+	"github.com/cloudogu/cldk/internal/devpush"
 	"github.com/cloudogu/cldk/internal/oci"
 	"github.com/cloudogu/cldk/internal/release"
 )
+
+// Ensure that MockDevPusher does implement DevPusher.
+// If this is not the case, regenerate this file with mockery.
+var _ DevPusher = &MockDevPusher{}
+
+// MockDevPusher is a mock implementation of DevPusher.
+//
+//	func TestSomethingThatUsesDevPusher(t *testing.T) {
+//
+//		// make and configure a mocked DevPusher
+//		mockedDevPusher := &MockDevPusher{
+//			PushFunc: func(ctx context.Context, opts devpush.Options) (devpush.Result, error) {
+//				panic("mock out the Push method")
+//			},
+//		}
+//
+//		// use mockedDevPusher in code that requires DevPusher
+//		// and then make assertions.
+//
+//	}
+type MockDevPusher struct {
+	// PushFunc mocks the Push method.
+	PushFunc func(ctx context.Context, opts devpush.Options) (devpush.Result, error)
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// Push holds details about calls to the Push method.
+		Push []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Opts is the opts argument value.
+			Opts devpush.Options
+		}
+	}
+	lockPush sync.RWMutex
+}
+
+// Push calls PushFunc.
+func (mock *MockDevPusher) Push(ctx context.Context, opts devpush.Options) (devpush.Result, error) {
+	if mock.PushFunc == nil {
+		panic("MockDevPusher.PushFunc: method is nil but DevPusher.Push was just called")
+	}
+	callInfo := struct {
+		Ctx  context.Context
+		Opts devpush.Options
+	}{
+		Ctx:  ctx,
+		Opts: opts,
+	}
+	mock.lockPush.Lock()
+	mock.calls.Push = append(mock.calls.Push, callInfo)
+	mock.lockPush.Unlock()
+	return mock.PushFunc(ctx, opts)
+}
+
+// PushCalls gets all the calls that were made to Push.
+// Check the length with:
+//
+//	len(mockedDevPusher.PushCalls())
+func (mock *MockDevPusher) PushCalls() []struct {
+	Ctx  context.Context
+	Opts devpush.Options
+} {
+	var calls []struct {
+		Ctx  context.Context
+		Opts devpush.Options
+	}
+	mock.lockPush.RLock()
+	calls = mock.calls.Push
+	mock.lockPush.RUnlock()
+	return calls
+}
 
 // Ensure that MockReleaser does implement Releaser.
 // If this is not the case, regenerate this file with mockery.

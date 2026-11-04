@@ -7,11 +7,14 @@ Cloudogu (LOP) Development Kit helps developers in releasing and developing thei
 cldk release --namespace <ns> <chart.tgz>   # release a packed dogu chart to registry.cloudogu.com
 cldk release --namespace <ns> -i <image> ... <chart.tgz>   # release the chart together with its images
 cldk release --dry-run --namespace <ns> -i <image> ... <chart.tgz>   # print the plan without pushing anything
+cldk dev-push       # push the dogu v3 under development in the working directory to a dev registry
 cldk version        # print the version and commit of cldk
 cldk -v <command>   # enable debug logging
 cldk -d <dir> <command>   # use <dir> as project directory instead of the working directory
 cldk --help
 ```
+
+### `release`
 
 - `cldk release` pushes the chart to `oci://<reg>/<ns>/dogu/v3/charts/<name>:<version>`, name and version are read from `Chart.yaml`. 
 - Each image given with `-i` is copied unchanged (same digest) from its registry to `<reg>/<ns>/dogu/v3/images/<name>:<tag>`, named after the last path segment of the source and keeping its tag.
@@ -36,13 +39,51 @@ cldk --help
 - The target registry is accessed with `--user`/`--pass` (or `CLDK_USER`/`CLDK_PASSWORD`) if given, else with the stored credentials of `helm registry login` or `docker login`.
 - Credentials are never persisted.
 
+### `dev-push`
+
+`cldk dev-push` pushes the working state of a dogu v3 repository under a new dev version to a dev registry.
+
+- The project directory (see below) needs a `cldk.yaml`:
+
+  ```yaml
+  namespace: official   # dogu namespace in the registry, required
+  chart: k8s/helm       # chart directory, default k8s/helm
+  ```
+
+  Unknown fields in `cldk.yaml` abort the command, so that typos are not silently ignored.
+- Each run creates a new dev version `<version>-dev.<UTC yyyymmddhhmmss>` from the `version` of `Chart.yaml`, e.g. `3.96.4-3-dev.20261103143012`.
+  - The version in `Chart.yaml` must be a valid semantic version without build metadata (`+…`).
+  - The chart is pushed to `oci://<reg>/<namespace>/dogu/v3/charts/<name>:<dev version>`, the same layout as `release`.
+- The chart is loaded from its directory like `helm package` does, including `.helmignore`.
+  - If `Chart.yaml` declares dependencies, they must be in `charts/`; run `helm dependency build <chart dir>` first.
+  - The chart is checked with `helm lint` (including `values.schema.json`) before anything is pushed; errors abort, warnings are logged.
+- The dev registry and its access are given as flags or environment variables, flags first:
+
+| Flag                          | Environment variable   | Description                                                           |
+|-------------------------------|------------------------|-----------------------------------------------------------------------|
+| `--reg <host[:port]>`         | `CLDK_DEV_REG`         | address of the dev registry to push to, required                      |
+| `--cluster-reg <host[:port]>` | `CLDK_DEV_CLUSTER_REG` | address of the dev registry as seen from the cluster, default `--reg` |
+| `--namespace <ns>`            | `CLDK_DEV_NAMESPACE`   | dogu namespace, default the `namespace` of `cldk.yaml`                |
+| `--plain-http`                | `CLDK_DEV_PLAIN_HTTP`  | dev registry without TLS                                              |
+| `--insecure`                  | `CLDK_DEV_INSECURE`    | dev registry with an untrusted (e.g. self-signed) certificate         |
+
+  - Boolean variables take the values of Go's `strconv.ParseBool`, e.g. `true`, `false`, `1`, `0`; an empty variable counts as not set.
+  - The dev registry is accessed with the stored credentials of `docker login` or `helm registry login`.
+- Put the settings of your environment into the `.env` of the dogu repository, e.g. for a k3d cluster with a local registry:
+
+  ```shell
+  CLDK_DEV_REG=localhost:5001
+  CLDK_DEV_CLUSTER_REG=k3d-registry-proxy.localhost:5000
+  CLDK_DEV_PLAIN_HTTP=true
+  ```
+
 ### Project directory and `.env`
 
 - Every command first loads the `.env` of the project directory into its environment, e.g. `CLDK_USER`/`CLDK_PASSWORD` for `release`.
 - The project directory is the working directory or the one given with `--dir`/`-d`.
 - Variables that are already set in the environment, even if empty, take precedence over the `.env`; flags take precedence over both.
 - A missing `.env` is fine, a `.env` that cannot be parsed aborts the command.
-- `cldk -v` logs the names of the variables taken from the `.env`, never their values.
+- `cldk -v` logs the names of the variables taken from the `.env`, never their values; only `dev-push` logs the resolved values of its own settings.
 
 ## Building
 

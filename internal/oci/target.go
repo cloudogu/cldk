@@ -3,6 +3,7 @@ package oci
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
 )
@@ -37,6 +38,19 @@ func (t Target) ImageRepository(imageName string) string {
 func (t Target) NameOptions() []name.Option {
 	if t.PlainHTTP {
 		return []name.Option{name.Insecure}
+	}
+
+	return nil
+}
+
+// ValidateImageName checks that the name is a valid image name in a target, i.e. a single path segment of a repository.
+func ValidateImageName(imageName string) error {
+	if imageName == "" || strings.Contains(imageName, "/") {
+		return fmt.Errorf("invalid image name %q: must be a single path segment, e.g. nexus", imageName)
+	}
+
+	if _, err := name.NewRepository("registry.example.com/"+imageName, name.StrictValidation); err != nil {
+		return fmt.Errorf("invalid image name %q: %w", imageName, err)
 	}
 
 	return nil

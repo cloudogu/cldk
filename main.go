@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/cloudogu/cldk/internal/cli"
+	"github.com/cloudogu/cldk/internal/devpush"
 	"github.com/cloudogu/cldk/internal/release"
 )
 
@@ -15,7 +16,7 @@ var (
 )
 
 func main() {
-	cmd := cli.NewRootCommand(cli.BuildInfo{Version: Version, CommitID: CommitID}, release.NewReleaser())
+	cmd := cli.NewRootCommand(cli.BuildInfo{Version: Version, CommitID: CommitID}, release.NewReleaser(), devpush.NewPusher())
 	if err := cmd.Execute(); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
