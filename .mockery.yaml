@@ -1,0 +1,20 @@
+# Configuration for mockery v3 (https://vektra.github.io/mockery/v3/configuration/).
+# This file belongs to the repository and may be adapted freely;
+all: true
+recursive: true
+# "matryer" generates moq-style mocks with a func field per method (no testify dependency), see
+# https://vektra.github.io/mockery/v3.8/template/matryer/
+template: matryer
+
+dir: "{{.InterfaceDir}}"
+filename: "mocks_test.go"
+pkgname: "{{.SrcPackageName}}"
+structname: "{{.Mock}}{{.InterfaceName | firstUpper }}"
+
+exclude-subpkg-regex:
+  - "vendor"
+
+packages:
+  github.com/cloudogu/cldk:
+    config: {}
+
