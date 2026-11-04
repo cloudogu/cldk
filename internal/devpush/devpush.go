@@ -12,6 +12,8 @@ import (
 
 	"github.com/cloudogu/cldk/internal/chart"
 	"github.com/cloudogu/cldk/internal/cldkfile"
+	"github.com/cloudogu/cldk/internal/dogu"
+	"github.com/cloudogu/cldk/internal/kube"
 	"github.com/cloudogu/cldk/internal/oci"
 )
 
@@ -32,6 +34,8 @@ type Options struct {
 	PlainHTTP bool
 	// Insecure allows TLS connections to the dev registry without certificate verification.
 	Insecure bool
+	// Kube selects the cluster and Kubernetes namespace the dogu is applied in.
+	Kube kube.Options
 }
 
 // Result describes what has been pushed.
@@ -43,6 +47,10 @@ type Result struct {
 	ChartReference string
 	// ChartDigest is the manifest digest of the pushed chart.
 	ChartDigest string
+	// Dogu is the name of the applied dogu, e.g. "nexus".
+	Dogu string
+	// Cluster is the cluster and Kubernetes namespace the dogu has been applied in.
+	Cluster kube.Info
 }
 
 // ChartPusher pushes a chart archive to a registry and returns the digest of its manifest, see oci.Client.
@@ -50,10 +58,17 @@ type ChartPusher interface {
 	PushChart(ctx context.Context, archive []byte, ref string) (digest string, err error)
 }
 
+// DoguClient applies the dogu resource in the cluster, see dogu.Client.
+type DoguClient interface {
+	Apply(ctx context.Context, chart dogu.DevChart) error
+}
+
 // Pusher pushes dogus under development.
 type Pusher struct {
 	// newChartPusher creates the client for the dev registry.
 	newChartPusher func(target oci.Target) (ChartPusher, error)
+	// newDoguClient connects to the cluster selected by the options.
+	newDoguClient func(opts kube.Options) (DoguClient, kube.Info, error)
 	// now is the clock the dev version is taken from.
 	now func() time.Time
 }
@@ -64,11 +79,20 @@ func NewPusher() *Pusher {
 		newChartPusher: func(target oci.Target) (ChartPusher, error) {
 			return oci.NewClient(target)
 		},
+		newDoguClient: func(opts kube.Options) (DoguClient, kube.Info, error) {
+			cluster, err := kube.Connect(opts)
+			if err != nil {
+				return nil, kube.Info{}, err
+			}
+
+			return dogu.NewClient(cluster.Dynamic, cluster.Info.Namespace), cluster.Info, nil
+		},
 		now: time.Now,
 	}
 }
 
-// Push loads the chart of the project directory, sets a new dev version in a copy of it, lints it and pushes it to the dev registry.
+// Push loads the chart of the project directory, sets a new dev version in a copy of it, lints it, pushes it to the
+// dev registry and applies the dogu with the dev chart in the cluster.
 func (p *Pusher) Push(ctx context.Context, opts Options) (Result, error) {
 	slog.Info("loading project", "dir", opts.Dir)
 
@@ -106,6 +130,11 @@ func (p *Pusher) Push(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, err
 	}
 
+	doguClient, cluster, err := p.connectCluster(opts.Kube)
+	if err != nil {
+		return Result{}, err
+	}
+
 	slog.Info("linting chart", "name", c.Name(), "version", version)
 	chart.SetVersion(c, version)
 
@@ -134,7 +163,32 @@ func (p *Pusher) Push(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, err
 	}
 
-	return Result{Version: version, ChartReference: ref, ChartDigest: digest}, nil
+	devChart := dogu.DevChart{
+		Name:      c.Name(),
+		Namespace: target.Namespace,
+		Version:   version,
+		URL:       "oci://" + oci.Target{Registry: opts.ClusterRegistry, Namespace: target.Namespace}.ChartRepository(c.Name()),
+		Insecure:  opts.PlainHTTP || opts.Insecure,
+	}
+	slog.Info("applying dogu", "name", devChart.Name, "version", devChart.Version, "chart", devChart.URL)
+
+	if err := doguClient.Apply(ctx, devChart); err != nil {
+		return Result{}, fmt.Errorf("pushed chart %s, but %w", ref, err)
+	}
+
+	return Result{Version: version, ChartReference: ref, ChartDigest: digest, Dogu: devChart.Name, Cluster: cluster}, nil
+}
+
+// connectCluster connects to the cluster and logs it, so that the dev push can be aborted before anything is pushed.
+func (p *Pusher) connectCluster(opts kube.Options) (DoguClient, kube.Info, error) {
+	doguClient, cluster, err := p.newDoguClient(opts)
+	if err != nil {
+		return nil, kube.Info{}, fmt.Errorf("failed to connect to the cluster: %w", err)
+	}
+
+	slog.Info("target cluster", "context", cluster.Context, "server", cluster.Server, "namespace", cluster.Namespace)
+
+	return doguClient, cluster, nil
 }
 
 // logLintWarnings logs the warnings of helm lint, which do not abort a dev push.

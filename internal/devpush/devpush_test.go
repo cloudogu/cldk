@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log"
@@ -22,6 +23,8 @@ import (
 	"helm.sh/helm/v4/pkg/chart/v2/loader"
 	helmregistry "helm.sh/helm/v4/pkg/registry"
 
+	"github.com/cloudogu/cldk/internal/dogu"
+	"github.com/cloudogu/cldk/internal/kube"
 	"github.com/cloudogu/cldk/internal/oci"
 )
 
@@ -30,12 +33,28 @@ var fixedNow = time.Date(2026, 11, 3, 15, 30, 12, 0, time.FixedZone("CET", 60*60
 
 const wantDevVersion = "3.96.4-3-dev.20261103143012"
 
-// newTestPusher returns a pusher with the fixed clock that pushes to real registries.
+// testCluster is the cluster of the mocked dogu client.
+var testCluster = kube.Info{Context: "k3d-dev1", Server: "https://0.0.0.0:6443", Namespace: "ecosystem"}
+
+// newTestPusher returns a pusher with the fixed clock that pushes to real registries and applies to a mocked cluster
+// without the dogu.
 func newTestPusher() *Pusher {
 	p := NewPusher()
 	p.now = func() time.Time { return fixedNow }
+	p.newDoguClient = func(kube.Options) (DoguClient, kube.Info, error) {
+		return newTestDoguClient(), testCluster, nil
+	}
 
 	return p
+}
+
+// newTestDoguClient returns a mocked dogu client that applies every dogu.
+func newTestDoguClient() *MockDoguClient {
+	return &MockDoguClient{
+		ApplyFunc: func(context.Context, dogu.DevChart) error {
+			return nil
+		},
+	}
 }
 
 // newTestRegistry starts an in-memory OCI registry without TLS and returns its address host:port.
@@ -135,32 +154,66 @@ func fileContents(files []*common.File) map[string]string {
 	return contents
 }
 
-// newMockedPusher returns a pusher with the fixed clock and a mocked chart pusher, and the targets the chart pusher
-// is created for.
-func newMockedPusher() (*Pusher, *MockChartPusher, *[]oci.Target) {
-	chartPusher := &MockChartPusher{
-		PushChartFunc: func(_ context.Context, _ []byte, _ string) (string, error) {
+// mockedPusher is a pusher with the fixed clock, a mocked chart pusher and a mocked cluster without the dogu.
+type mockedPusher struct {
+	*Pusher
+	chartPusher *MockChartPusher
+	doguClient  *MockDoguClient
+	// targets are the targets the chart pusher is created for.
+	targets []oci.Target
+	// kubeOptions are the options the dogu client is created for.
+	kubeOptions []kube.Options
+	// steps are the pushes and applies in their order.
+	steps []string
+}
+
+// newMockedPusher returns a pusher with the fixed clock, a mocked chart pusher and a mocked cluster without the dogu.
+func newMockedPusher() *mockedPusher {
+	m := &mockedPusher{Pusher: newTestPusher(), doguClient: newTestDoguClient()}
+
+	m.chartPusher = &MockChartPusher{
+		PushChartFunc: func(_ context.Context, _ []byte, ref string) (string, error) {
+			m.steps = append(m.steps, "push "+ref)
+
 			return "sha256:1234", nil
 		},
 	}
+	m.doguClient.ApplyFunc = func(_ context.Context, chart dogu.DevChart) error {
+		m.steps = append(m.steps, "apply "+chart.Name)
 
-	var targets []oci.Target
-
-	p := newTestPusher()
-	p.newChartPusher = func(target oci.Target) (ChartPusher, error) {
-		targets = append(targets, target)
-
-		return chartPusher, nil
+		return nil
 	}
 
-	return p, chartPusher, &targets
+	m.newChartPusher = func(target oci.Target) (ChartPusher, error) {
+		m.targets = append(m.targets, target)
+
+		return m.chartPusher, nil
+	}
+	m.newDoguClient = func(opts kube.Options) (DoguClient, kube.Info, error) {
+		m.kubeOptions = append(m.kubeOptions, opts)
+
+		return m.doguClient, testCluster, nil
+	}
+
+	return m
+}
+
+// appliedDevCharts returns the dev charts the dogu has been applied with.
+func (m *mockedPusher) appliedDevCharts() []dogu.DevChart {
+	var charts []dogu.DevChart
+
+	for _, call := range m.doguClient.ApplyCalls() {
+		charts = append(charts, call.Chart)
+	}
+
+	return charts
 }
 
 // pushedRefs returns the references of all pushed charts.
-func pushedRefs(chartPusher *MockChartPusher) []string {
+func (m *mockedPusher) pushedRefs() []string {
 	var refs []string
 
-	for _, call := range chartPusher.PushChartCalls() {
+	for _, call := range m.chartPusher.PushChartCalls() {
 		refs = append(refs, call.Ref)
 	}
 
@@ -193,18 +246,18 @@ func TestPush(t *testing.T) {
 	})
 
 	t.Run("pushes to the namespace of the options instead of cldk.yaml", func(t *testing.T) {
-		pusher, chartPusher, _ := newMockedPusher()
+		pusher := newMockedPusher()
 		dir := writeProject(t, "namespace: official\n", nil)
 
 		result, err := pusher.Push(context.Background(), Options{Dir: dir, Registry: "localhost:5001", Namespace: "personal"})
 
 		require.NoError(t, err)
 		assert.Equal(t, "localhost:5001/personal/dogu/v3/charts/nexus:"+wantDevVersion, result.ChartReference)
-		assert.Equal(t, []string{result.ChartReference}, pushedRefs(chartPusher))
+		assert.Equal(t, []string{result.ChartReference}, pusher.pushedRefs())
 	})
 
 	t.Run("pushes with plain HTTP and without certificate verification as given", func(t *testing.T) {
-		pusher, _, targets := newMockedPusher()
+		pusher := newMockedPusher()
 		dir := writeProject(t, "namespace: official\n", nil)
 
 		_, err := pusher.Push(context.Background(), Options{
@@ -213,11 +266,11 @@ func TestPush(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, []oci.Target{{Registry: "localhost:5001", Namespace: "official", PlainHTTP: true, InsecureSkipTLSVerify: true}},
-			*targets)
+			pusher.targets)
 	})
 
 	t.Run("keeps a prerelease of the chart version", func(t *testing.T) {
-		pusher, chartPusher, _ := newMockedPusher()
+		pusher := newMockedPusher()
 		dir := writeProject(t, "namespace: official\n", map[string]string{
 			"Chart.yaml": "apiVersion: v2\nname: nexus\nversion: 1.2.3-rc.1\n",
 		})
@@ -226,7 +279,7 @@ func TestPush(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "1.2.3-rc.1-dev.20261103143012", result.Version)
-		assert.Len(t, chartPusher.PushChartCalls(), 1)
+		assert.Len(t, pusher.chartPusher.PushChartCalls(), 1)
 	})
 
 	failures := []struct {
@@ -273,7 +326,7 @@ func TestPush(t *testing.T) {
 
 	for _, tt := range failures {
 		t.Run("aborts without pushing on "+tt.name, func(t *testing.T) {
-			pusher, chartPusher, _ := newMockedPusher()
+			pusher := newMockedPusher()
 			dir := writeProject(t, tt.cldkYAML, tt.chartFiles)
 
 			if tt.cldkYAML == "" {
@@ -284,7 +337,8 @@ func TestPush(t *testing.T) {
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
-			assert.Empty(t, chartPusher.PushChartCalls())
+			assert.Empty(t, pusher.chartPusher.PushChartCalls())
+			assert.Empty(t, pusher.appliedDevCharts())
 		})
 	}
 
@@ -299,5 +353,85 @@ func TestPush(t *testing.T) {
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no registry client")
+	})
+
+	t.Run("applies the dogu with the dev chart after pushing the chart", func(t *testing.T) {
+		pusher := newMockedPusher()
+		dir := writeProject(t, "namespace: official\n", nil)
+		kubeOpts := kube.Options{Context: "k3d-dev1", Namespace: "ecosystem"}
+
+		result, err := pusher.Push(context.Background(), Options{
+			Dir: dir, Registry: "localhost:5001", ClusterRegistry: "k3d-registry-proxy.localhost:5000", Kube: kubeOpts,
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, []kube.Options{kubeOpts}, pusher.kubeOptions)
+		assert.Equal(t, []string{"push " + result.ChartReference, "apply nexus"}, pusher.steps)
+		assert.Equal(t, []dogu.DevChart{{
+			Name:      "nexus",
+			Namespace: "official",
+			Version:   wantDevVersion,
+			URL:       "oci://k3d-registry-proxy.localhost:5000/official/dogu/v3/charts/nexus",
+		}}, pusher.appliedDevCharts())
+		assert.Equal(t, "nexus", result.Dogu)
+		assert.Equal(t, testCluster, result.Cluster)
+	})
+
+	t.Run("applies the dev chart in the namespace of the options", func(t *testing.T) {
+		pusher := newMockedPusher()
+		dir := writeProject(t, "namespace: official\n", nil)
+
+		_, err := pusher.Push(context.Background(), Options{
+			Dir: dir, Registry: "localhost:5001", ClusterRegistry: "localhost:5001", Namespace: "personal",
+		})
+
+		require.NoError(t, err)
+		require.Len(t, pusher.appliedDevCharts(), 1)
+		assert.Equal(t, "personal", pusher.appliedDevCharts()[0].Namespace)
+		assert.Equal(t, "oci://localhost:5001/personal/dogu/v3/charts/nexus", pusher.appliedDevCharts()[0].URL)
+	})
+
+	for _, opts := range []Options{{PlainHTTP: true}, {Insecure: true}} {
+		t.Run(fmt.Sprintf("marks the dev chart as insecure with %+v", opts), func(t *testing.T) {
+			pusher := newMockedPusher()
+			opts.Dir = writeProject(t, "namespace: official\n", nil)
+			opts.Registry = "localhost:5001"
+
+			_, err := pusher.Push(context.Background(), opts)
+
+			require.NoError(t, err)
+			require.Len(t, pusher.appliedDevCharts(), 1)
+			assert.True(t, pusher.appliedDevCharts()[0].Insecure)
+		})
+	}
+
+	t.Run("aborts before linting and pushing on an invalid kubeconfig", func(t *testing.T) {
+		pusher := newMockedPusher()
+		pusher.newDoguClient = func(kube.Options) (DoguClient, kube.Info, error) {
+			return nil, kube.Info{}, errors.New(`context "dev3" not found`)
+		}
+		// The chart has lint errors, connecting to the cluster must abort first.
+		dir := writeProject(t, "namespace: official\n", map[string]string{
+			"values.schema.json": `{"type": "object", "required": ["missingValue"]}`,
+		})
+
+		_, err := pusher.Push(context.Background(), Options{Dir: dir, Registry: "localhost:5001"})
+
+		require.ErrorContains(t, err, `failed to connect to the cluster: context "dev3" not found`)
+		assert.Empty(t, pusher.chartPusher.PushChartCalls())
+		assert.Empty(t, pusher.appliedDevCharts())
+	})
+
+	t.Run("returns the error of the apply after pushing the chart", func(t *testing.T) {
+		pusher := newMockedPusher()
+		pusher.doguClient.ApplyFunc = func(context.Context, dogu.DevChart) error {
+			return errors.New("admission webhook denied")
+		}
+		dir := writeProject(t, "namespace: official\n", nil)
+
+		_, err := pusher.Push(context.Background(), Options{Dir: dir, Registry: "localhost:5001"})
+
+		require.ErrorContains(t, err, "pushed chart localhost:5001/official/dogu/v3/charts/nexus:"+wantDevVersion+", but admission webhook denied")
+		assert.Len(t, pusher.chartPusher.PushChartCalls(), 1)
 	})
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cloudogu/cldk/internal/devpush"
+	"github.com/cloudogu/cldk/internal/kube"
 )
 
 // Environment variables for the settings of dev-push.
@@ -21,6 +22,8 @@ const (
 	envDevNamespace       = "CLDK_DEV_NAMESPACE"
 	envDevPlainHTTP       = "CLDK_DEV_PLAIN_HTTP"
 	envDevInsecure        = "CLDK_DEV_INSECURE"
+	envDevKubeContext     = "CLDK_DEV_KUBE_CONTEXT"
+	envDevKubeNamespace   = "CLDK_DEV_KUBE_NAMESPACE"
 )
 
 // Flags of dev-push.
@@ -30,6 +33,8 @@ const (
 	flagNamespace       = "namespace"
 	flagPlainHTTP       = "plain-http"
 	flagInsecure        = "insecure"
+	flagKubeContext     = "kube-context"
+	flagKubeNamespace   = "kube-namespace"
 )
 
 // DevPusher pushes a dogu under development, see devpush.Pusher.
@@ -37,15 +42,14 @@ type DevPusher interface {
 	Push(ctx context.Context, opts devpush.Options) (devpush.Result, error)
 }
 
-const devPushLong = `Push a dogu v3 under development from its project directory to a dev registry.
+const devPushLong = `Push a dogu v3 under development to a dev registry and install it in a cluster.
 
-dev-push reads cldk.yaml in the project directory (--dir, default the current directory), loads the chart directory
-named there (default k8s/helm), sets a new dev version <Chart.yaml version>-dev.<UTC timestamp> in a copy of the
-chart, lints it and pushes it to <reg>/<namespace>/dogu/v3/charts/<name>. Nothing in the project directory is changed.
+dev-push reads cldk.yaml in the project directory, sets a new dev version <Chart.yaml version>-dev.<UTC timestamp> in
+a copy of the chart, lints and pushes it, and applies the dogu with this version and the dev chart in the cluster of
+the current kubeconfig context. The project directory is not changed.
 
-cldk.yaml is required and names at least the dogu namespace. The environment (registry addresses, plain HTTP,
-insecure TLS) is taken from the flags, the CLDK_DEV_* environment variables or the .env of the project directory,
-in this order. Credentials for the dev registry are taken from the docker configuration, e.g. "docker login".`
+Settings are taken from the flags, the CLDK_DEV_* environment variables or the .env of the project directory, in this
+order. See the README for the dev mode of the dogu operator and for switching back to the regular dogu.`
 
 const devPushExample = `  # .env in the dogu repository, e.g. for a k3d cluster with a local registry
   CLDK_DEV_REG=localhost:5001
@@ -59,7 +63,10 @@ const devPushExample = `  # .env in the dogu repository, e.g. for a k3d cluster 
   cldk dev-push
 
   # push the dogu in another directory to a personal namespace
-  cldk --dir ../nexus dev-push --namespace personal`
+  cldk --dir ../nexus dev-push --namespace personal
+
+  # push the dogu to another cluster
+  cldk dev-push --kube-context k3d-dev2 --kube-namespace ecosystem`
 
 // newDevPushCommand creates the dev-push command.
 func newDevPushCommand(pusher DevPusher) *cobra.Command {
@@ -101,6 +108,8 @@ func newDevPushCommand(pusher DevPusher) *cobra.Command {
 	cmd.Flags().String(flagNamespace, "", "dogu namespace in the dev registry, default the namespace of cldk.yaml (env: "+envDevNamespace+")")
 	cmd.Flags().Bool(flagPlainHTTP, false, "allow unencrypted HTTP connections to the dev registry (env: "+envDevPlainHTTP+")")
 	cmd.Flags().Bool(flagInsecure, false, "allow TLS without certificate verification for the dev registry (env: "+envDevInsecure+")")
+	cmd.Flags().String(flagKubeContext, "", "kubeconfig context of the cluster, default the current context (env: "+envDevKubeContext+")")
+	cmd.Flags().String(flagKubeNamespace, "", "Kubernetes namespace of the dogu, default the namespace of the context, otherwise default (env: "+envDevKubeNamespace+")")
 
 	return cmd
 }
@@ -120,6 +129,10 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 		Insecure:  insecure,
 		Namespace: r.str(flagNamespace, envDevNamespace, "namespace of cldk.yaml"),
 		Registry:  r.str(flagRegistry, envDevRegistry, ""),
+		Kube: kube.Options{
+			Context:   r.str(flagKubeContext, envDevKubeContext, "current context"),
+			Namespace: r.str(flagKubeNamespace, envDevKubeNamespace, "namespace of the context"),
+		},
 	}
 
 	if opts.Registry == "" {
@@ -156,9 +169,13 @@ func validateRegistryAddress(flag, env, address string) error {
 	return nil
 }
 
-// printDevPushResult prints what has been pushed.
+// printDevPushResult prints what has been pushed and applied and how to watch the dogu.
 func printDevPushResult(out io.Writer, result devpush.Result) error {
-	_, err := fmt.Fprintf(out, "Pushed chart  oci://%s\n", result.ChartReference)
+	cluster := result.Cluster
+	_, err := fmt.Fprintf(out, "Pushed chart  oci://%s\nApplied dogu %s %s (context %s, namespace %s)\nWatch: kubectl --context %s -n %s get dogu %s -w\n",
+		result.ChartReference,
+		result.Dogu, result.Version, cluster.Context, cluster.Namespace,
+		cluster.Context, cluster.Namespace, result.Dogu)
 
 	return err
 }

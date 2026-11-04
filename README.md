@@ -7,7 +7,7 @@ Cloudogu (LOP) Development Kit helps developers in releasing and developing thei
 cldk release --namespace <ns> <chart.tgz>   # release a packed dogu chart to registry.cloudogu.com
 cldk release --namespace <ns> -i <image> ... <chart.tgz>   # release the chart together with its images
 cldk release --dry-run --namespace <ns> -i <image> ... <chart.tgz>   # print the plan without pushing anything
-cldk dev-push       # push the dogu v3 under development in the working directory to a dev registry
+cldk dev-push       # push the dogu v3 under development in the working directory and install it in the current cluster
 cldk version        # print the version and commit of cldk
 cldk -v <command>   # enable debug logging
 cldk -d <dir> <command>   # use <dir> as project directory instead of the working directory
@@ -41,7 +41,7 @@ cldk --help
 
 ### `dev-push`
 
-`cldk dev-push` pushes the working state of a dogu v3 repository under a new dev version to a dev registry.
+`cldk dev-push` pushes the working state of a dogu v3 repository under a new dev version to a dev registry and installs it in a cluster.
 
 - The project directory (see below) needs a `cldk.yaml`:
 
@@ -57,15 +57,17 @@ cldk --help
 - The chart is loaded from its directory like `helm package` does, including `.helmignore`.
   - If `Chart.yaml` declares dependencies, they must be in `charts/`; run `helm dependency build <chart dir>` first.
   - The chart is checked with `helm lint` (including `values.schema.json`) before anything is pushed; errors abort, warnings are logged.
-- The dev registry and its access are given as flags or environment variables, flags first:
+- The dev registry, its access and the cluster are given as flags or environment variables, flags first:
 
-| Flag                          | Environment variable   | Description                                                           |
-|-------------------------------|------------------------|-----------------------------------------------------------------------|
-| `--reg <host[:port]>`         | `CLDK_DEV_REG`         | address of the dev registry to push to, required                      |
-| `--cluster-reg <host[:port]>` | `CLDK_DEV_CLUSTER_REG` | address of the dev registry as seen from the cluster, default `--reg` |
-| `--namespace <ns>`            | `CLDK_DEV_NAMESPACE`   | dogu namespace, default the `namespace` of `cldk.yaml`                |
-| `--plain-http`                | `CLDK_DEV_PLAIN_HTTP`  | dev registry without TLS                                              |
-| `--insecure`                  | `CLDK_DEV_INSECURE`    | dev registry with an untrusted (e.g. self-signed) certificate         |
+| Flag                          | Environment variable      | Description                                                                            |
+|-------------------------------|---------------------------|----------------------------------------------------------------------------------------|
+| `--reg <host[:port]>`         | `CLDK_DEV_REG`            | address of the dev registry to push to, required                                       |
+| `--cluster-reg <host[:port]>` | `CLDK_DEV_CLUSTER_REG`    | address of the dev registry as seen from the cluster, default `--reg`                  |
+| `--namespace <ns>`            | `CLDK_DEV_NAMESPACE`      | dogu namespace, default the `namespace` of `cldk.yaml`                                 |
+| `--plain-http`                | `CLDK_DEV_PLAIN_HTTP`     | dev registry without TLS                                                               |
+| `--insecure`                  | `CLDK_DEV_INSECURE`       | dev registry with an untrusted (e.g. self-signed) certificate                          |
+| `--kube-context <name>`       | `CLDK_DEV_KUBE_CONTEXT`   | kubeconfig context of the cluster, default the current context                         |
+| `--kube-namespace <ns>`       | `CLDK_DEV_KUBE_NAMESPACE` | Kubernetes namespace of the dogu, default the namespace of the context, else `default` |
 
   - Boolean variables take the values of Go's `strconv.ParseBool`, e.g. `true`, `false`, `1`, `0`; an empty variable counts as not set.
   - The dev registry is accessed with the stored credentials of `docker login` or `helm registry login`.
@@ -76,6 +78,19 @@ cldk --help
   CLDK_DEV_CLUSTER_REG=k3d-registry-proxy.localhost:5000
   CLDK_DEV_PLAIN_HTTP=true
   ```
+
+#### Installing in the cluster
+
+- After pushing the chart, `dev-push` applies the dogu resource (`k8s.cloudogu.com/v3beta1`, kind `Dogu`) in the cluster per server-side apply with the field manager `cldk`:
+  - `spec.version` is the dev version, `spec.doguApiVersion` is `v3`, `spec.name` and `metadata.name` are the `name` of `Chart.yaml`, `spec.doguNamespace` is the dogu namespace.
+  - The annotation `k8s.cloudogu.com/dev-chart-url` holds the URL of the chart without tag from the cluster address of the dev registry, e.g. `oci://k3d-registry-proxy.localhost:5000/official/dogu/v3/charts/nexus`.
+  - The annotation `k8s.cloudogu.com/dev-chart-insecure: "true"` is set with `--plain-http` or `--insecure` and removed without them.
+  - All other fields of an existing dogu, e.g. `values`, `mappedValues` or `stopped`, are kept.
+- `KUBECONFIG` may be set in the `.env`.
+  - Select another context or namespace with `--kube-context` and `--kube-namespace`.
+- Before linting and pushing, `dev-push` logs the context, server and namespace of the cluster.
+- `dev-push` does not wait for the dogu to be ready.
+- If applying fails after the push, the pushed chart stays in the dev registry.
 
 ### Project directory and `.env`
 

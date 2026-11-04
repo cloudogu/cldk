@@ -7,6 +7,8 @@ package devpush
 import (
 	"context"
 	"sync"
+
+	"github.com/cloudogu/cldk/internal/dogu"
 )
 
 // Ensure that MockChartPusher does implement ChartPusher.
@@ -84,5 +86,77 @@ func (mock *MockChartPusher) PushChartCalls() []struct {
 	mock.lockPushChart.RLock()
 	calls = mock.calls.PushChart
 	mock.lockPushChart.RUnlock()
+	return calls
+}
+
+// Ensure that MockDoguClient does implement DoguClient.
+// If this is not the case, regenerate this file with mockery.
+var _ DoguClient = &MockDoguClient{}
+
+// MockDoguClient is a mock implementation of DoguClient.
+//
+//	func TestSomethingThatUsesDoguClient(t *testing.T) {
+//
+//		// make and configure a mocked DoguClient
+//		mockedDoguClient := &MockDoguClient{
+//			ApplyFunc: func(ctx context.Context, chart dogu.DevChart) error {
+//				panic("mock out the Apply method")
+//			},
+//		}
+//
+//		// use mockedDoguClient in code that requires DoguClient
+//		// and then make assertions.
+//
+//	}
+type MockDoguClient struct {
+	// ApplyFunc mocks the Apply method.
+	ApplyFunc func(ctx context.Context, chart dogu.DevChart) error
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// Apply holds details about calls to the Apply method.
+		Apply []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Chart is the chart argument value.
+			Chart dogu.DevChart
+		}
+	}
+	lockApply sync.RWMutex
+}
+
+// Apply calls ApplyFunc.
+func (mock *MockDoguClient) Apply(ctx context.Context, chart dogu.DevChart) error {
+	if mock.ApplyFunc == nil {
+		panic("MockDoguClient.ApplyFunc: method is nil but DoguClient.Apply was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Chart dogu.DevChart
+	}{
+		Ctx:   ctx,
+		Chart: chart,
+	}
+	mock.lockApply.Lock()
+	mock.calls.Apply = append(mock.calls.Apply, callInfo)
+	mock.lockApply.Unlock()
+	return mock.ApplyFunc(ctx, chart)
+}
+
+// ApplyCalls gets all the calls that were made to Apply.
+// Check the length with:
+//
+//	len(mockedDoguClient.ApplyCalls())
+func (mock *MockDoguClient) ApplyCalls() []struct {
+	Ctx   context.Context
+	Chart dogu.DevChart
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Chart dogu.DevChart
+	}
+	mock.lockApply.RLock()
+	calls = mock.calls.Apply
+	mock.lockApply.RUnlock()
 	return calls
 }
