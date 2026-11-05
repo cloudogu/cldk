@@ -232,6 +232,8 @@ func (p *releasePlan) push(ctx context.Context) (Result, error) {
 		result.Images = append(result.Images, released)
 	}
 
+	slog.Debug("pushing chart", "target", p.chartRef)
+
 	digest, err := p.client.PushChart(ctx, p.archive, p.chartRef)
 	if err != nil {
 		return Result{}, err

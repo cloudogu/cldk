@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -133,8 +132,6 @@ func (c *Client) ChartExists(_ context.Context, ref string) (digest string, exis
 // PushChart pushes the chart archive to ref and returns the digest of its manifest.
 // The helm registry client cannot be canceled, so that ctx has no effect yet.
 func (c *Client) PushChart(_ context.Context, archive []byte, ref string) (string, error) {
-	slog.Debug("pushing chart", "target", ref)
-
 	pushed, err := c.chartClient.Push(archive, ref)
 	if err != nil {
 		return "", fmt.Errorf("failed to push chart to %s: %w", ref, err)
