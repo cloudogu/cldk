@@ -9,7 +9,7 @@ cldk release --namespace <ns> -i <image> ... <chart.tgz>   # release the chart t
 cldk release --dry-run --namespace <ns> -i <image> ... <chart.tgz>   # print the plan without pushing anything
 cldk dev-push       # push the dogu v3 under development in the working directory and install it in the current cluster
 cldk version        # print the version and commit of cldk
-cldk -v <command>   # enable debug logging
+cldk -v <command>   # enable debug logging of cldk, debug output of libraries like Helm is left out
 cldk -d <dir> <command>   # use <dir> as project directory instead of the working directory
 cldk --help
 ```

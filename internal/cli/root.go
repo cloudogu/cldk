@@ -35,7 +35,8 @@ func NewRootCommand(info BuildInfo, releaser Releaser, devPusher DevPusher) *cob
 				level = slog.LevelDebug
 			}
 
-			slog.SetDefault(slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: level})))
+			textHandler := slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: level})
+			slog.SetDefault(slog.New(libraryDebugFilter{Handler: textHandler}))
 			slog.Debug("starting cldk", "version", info.Version, "commit", info.CommitID)
 
 			keys, err := loadDotEnv(dir)
