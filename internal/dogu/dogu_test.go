@@ -107,6 +107,33 @@ func TestObject(t *testing.T) {
 	})
 }
 
+func TestYAML(t *testing.T) {
+	t.Run("renders the applied dogu resource", func(t *testing.T) {
+		got, err := YAML(DevChart{
+			Name:      "nexus",
+			Namespace: "official",
+			Version:   "3.96.4-3-dev.20261103143012",
+			URL:       "oci://k3d-registry-proxy.localhost:5000/official/dogu/v3/charts/nexus",
+			Insecure:  true,
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, `apiVersion: k8s.cloudogu.com/v3beta1
+kind: Dogu
+metadata:
+  annotations:
+    k8s.cloudogu.com/dev-chart-insecure: "true"
+    k8s.cloudogu.com/dev-chart-url: oci://k3d-registry-proxy.localhost:5000/official/dogu/v3/charts/nexus
+  name: nexus
+spec:
+  doguApiVersion: v3
+  doguNamespace: official
+  name: nexus
+  version: 3.96.4-3-dev.20261103143012
+`, string(got))
+	})
+}
+
 func TestClientApply(t *testing.T) {
 	t.Run("creates a missing dogu", func(t *testing.T) {
 		client, fake := newTestClient(t)

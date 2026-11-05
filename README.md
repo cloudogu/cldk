@@ -83,6 +83,7 @@ cldk --help
 | `--build-arg KEY[=VALUE]`      |                           | build argument for all images, repeatable                                              |
 | `--replace-image <name>=<ref>` |                           | do not build the image `<name>`, write `<ref>` into the chart instead, repeatable      |
 | `--skip-image <name>`          |                           | neither build the image `<name>` nor write it into the chart, repeatable               |
+| `--dry-run`                    |                           | run all checks and print the plan, but build, push and apply nothing                   |
 
   - Boolean variables take the values of Go's `strconv.ParseBool`, e.g. `true`, `false`, `1`, `0`; an empty variable counts as not set.
   - The dev registry is accessed with the stored credentials of `docker login` or `helm registry login`.
@@ -133,6 +134,19 @@ cldk --help
 - Before linting and pushing, `dev-push` logs the context, server and namespace of the cluster.
 - `dev-push` does not wait for the dogu to be ready.
 - If applying fails after the push, the pushed images and chart stay in the dev registry.
+
+#### Dry run
+
+- Use `--dry-run` to check a dev push without building, pushing or applying anything:
+
+  ```shell
+  cldk dev-push --dry-run
+  ```
+
+  - It runs all checks of a dev push: `cldk.yaml`, the chart and its version, the builder (if an image is built), the connection to the cluster, and the rewrite and lint of the chart.
+  - It prints the dev version, each image with its push reference or replaced reference or as skipped, the chart reference, the target cluster and the dogu resource as YAML, as it would be applied.
+  - A failed check fails the dry run, too.
+  - `--dry-run` has no environment variable, so that a `.env` never turns a dev push into a dry run.
 
 ### Project directory and `.env`
 

@@ -117,76 +117,56 @@ func NewPusher() *Pusher {
 	}
 }
 
+// Plan runs all checks of a dev push of the project directory, including the connection to the cluster, the rewrite
+// and the lint of the chart, but builds, pushes and applies nothing.
+func (p *Pusher) Plan(ctx context.Context, opts Options) (Plan, error) {
+	dp, err := p.newDevPushPlan(ctx, opts)
+	if err != nil {
+		return Plan{}, err
+	}
+
+	return dp.summary(), nil
+}
+
 // Push builds and pushes the images of the project directory, pushes a copy of its chart with the dev version and
 // the built images, and applies the dogu with the dev chart in the cluster.
+// All checks of Plan run before the first build.
 func (p *Pusher) Push(ctx context.Context, opts Options) (Result, error) {
-	project, target, err := loadProject(opts)
+	dp, err := p.newDevPushPlan(ctx, opts)
 	if err != nil {
 		return Result{}, err
 	}
 
-	c, version, err := p.loadChart(opts.Dir, project)
+	return push(ctx, dp)
+}
+
+// push builds and pushes the images, pushes the chart and applies the dogu with the dev chart.
+func push(ctx context.Context, dp *devPushPlan) (Result, error) {
+	pushed, err := buildImages(ctx, dp.builder, dp.images.toBuild())
 	if err != nil {
 		return Result{}, err
 	}
 
-	clusterTarget := oci.Target{Registry: opts.ClusterRegistry, Namespace: target.Namespace}
-	images := planImages(opts, project, target, clusterTarget, version)
+	slog.Info("pushing chart", "target", dp.chartRef)
 
-	builder, err := p.createBuilder(ctx, opts.Builder, images.toBuild())
+	digest, err := dp.chartPusher.PushChart(ctx, dp.archive, dp.chartRef)
 	if err != nil {
 		return Result{}, err
 	}
 
-	doguClient, cluster, err := p.connectCluster(opts.Kube)
-	if err != nil {
-		return Result{}, err
-	}
-
-	archive, err := prepareChart(c, version, images.images)
-	if err != nil {
-		return Result{}, err
-	}
-
-	client, err := p.newChartPusher(target)
-	if err != nil {
-		return Result{}, err
-	}
-
-	pushed, err := buildImages(ctx, builder, images.toBuild())
-	if err != nil {
-		return Result{}, err
-	}
-
-	ref := target.ChartRepository(c.Name()) + ":" + version
-	slog.Info("pushing chart", "target", ref)
-
-	digest, err := client.PushChart(ctx, archive, ref)
-	if err != nil {
-		return Result{}, err
-	}
-
-	devChart := dogu.DevChart{
-		Name:      c.Name(),
-		Namespace: target.Namespace,
-		Version:   version,
-		URL:       "oci://" + clusterTarget.ChartRepository(c.Name()),
-		Insecure:  opts.PlainHTTP || opts.Insecure,
-	}
-
-	if err := applyDogu(ctx, doguClient, devChart); err != nil {
-		return Result{}, fmt.Errorf("pushed chart %s, but %w", ref, err)
+	if err := applyDogu(ctx, dp.doguClient, dp.devChart); err != nil {
+		return Result{}, fmt.Errorf("pushed chart %s, but %w", dp.chartRef, err)
 	}
 
 	return Result{
-		Version:        version,
+		Version:        dp.version,
 		Images:         pushed,
-		ReplacedImages: images.replaced(),
-		SkippedImages:  images.skipped,
-		ChartReference: ref,
+		ReplacedImages: dp.images.replaced(),
+		SkippedImages:  dp.images.skipped,
+		ChartReference: dp.chartRef,
 		ChartDigest:    digest,
-		Dogu:           devChart.Name,
-		Cluster:        cluster,
+		Dogu:           dp.devChart.Name,
+		Cluster:        dp.cluster,
 	}, nil
 }
 

@@ -23,6 +23,9 @@ var _ DevPusher = &MockDevPusher{}
 //
 //		// make and configure a mocked DevPusher
 //		mockedDevPusher := &MockDevPusher{
+//			PlanFunc: func(ctx context.Context, opts devpush.Options) (devpush.Plan, error) {
+//				panic("mock out the Plan method")
+//			},
 //			PushFunc: func(ctx context.Context, opts devpush.Options) (devpush.Result, error) {
 //				panic("mock out the Push method")
 //			},
@@ -33,11 +36,21 @@ var _ DevPusher = &MockDevPusher{}
 //
 //	}
 type MockDevPusher struct {
+	// PlanFunc mocks the Plan method.
+	PlanFunc func(ctx context.Context, opts devpush.Options) (devpush.Plan, error)
+
 	// PushFunc mocks the Push method.
 	PushFunc func(ctx context.Context, opts devpush.Options) (devpush.Result, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// Plan holds details about calls to the Plan method.
+		Plan []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Opts is the opts argument value.
+			Opts devpush.Options
+		}
 		// Push holds details about calls to the Push method.
 		Push []struct {
 			// Ctx is the ctx argument value.
@@ -46,7 +59,44 @@ type MockDevPusher struct {
 			Opts devpush.Options
 		}
 	}
+	lockPlan sync.RWMutex
 	lockPush sync.RWMutex
+}
+
+// Plan calls PlanFunc.
+func (mock *MockDevPusher) Plan(ctx context.Context, opts devpush.Options) (devpush.Plan, error) {
+	if mock.PlanFunc == nil {
+		panic("MockDevPusher.PlanFunc: method is nil but DevPusher.Plan was just called")
+	}
+	callInfo := struct {
+		Ctx  context.Context
+		Opts devpush.Options
+	}{
+		Ctx:  ctx,
+		Opts: opts,
+	}
+	mock.lockPlan.Lock()
+	mock.calls.Plan = append(mock.calls.Plan, callInfo)
+	mock.lockPlan.Unlock()
+	return mock.PlanFunc(ctx, opts)
+}
+
+// PlanCalls gets all the calls that were made to Plan.
+// Check the length with:
+//
+//	len(mockedDevPusher.PlanCalls())
+func (mock *MockDevPusher) PlanCalls() []struct {
+	Ctx  context.Context
+	Opts devpush.Options
+} {
+	var calls []struct {
+		Ctx  context.Context
+		Opts devpush.Options
+	}
+	mock.lockPlan.RLock()
+	calls = mock.calls.Plan
+	mock.lockPlan.RUnlock()
+	return calls
 }
 
 // Push calls PushFunc.

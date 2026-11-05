@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+	"sigs.k8s.io/yaml"
 )
 
 // GVR is the resource of dogus v3.
@@ -64,6 +65,16 @@ func Object(chart DevChart) *unstructured.Unstructured {
 			"doguApiVersion": doguAPIVersionV3,
 		},
 	}}
+}
+
+// YAML returns the dogu resource of Object as YAML, as it is applied.
+func YAML(chart DevChart) ([]byte, error) {
+	out, err := yaml.Marshal(Object(chart).Object)
+	if err != nil {
+		return nil, fmt.Errorf("failed to render dogu %s as YAML: %w", chart.Name, err)
+	}
+
+	return out, nil
 }
 
 // Client reads and applies dogus in one Kubernetes namespace.

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cloudogu/cldk/internal/devpush"
+	"github.com/cloudogu/cldk/internal/dogu"
 	"github.com/cloudogu/cldk/internal/kube"
 )
 
@@ -25,6 +26,24 @@ func newSuccessfulDevPusher() *MockDevPusher {
 				ChartDigest:    "sha256:1234",
 				Dogu:           "nexus",
 				Cluster:        kube.Info{Context: "k3d-dev1", Server: "https://0.0.0.0:6443", Namespace: "ecosystem"},
+			}, nil
+		},
+		PlanFunc: func(_ context.Context, _ devpush.Options) (devpush.Plan, error) {
+			return devpush.Plan{
+				Version: "3.96.4-3-dev.20261103143012",
+				Images: []devpush.PushedImage{
+					{Name: "nexus", Reference: "localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012"},
+				},
+				ReplacedImages: []devpush.ReplacedImage{{Name: "sidecar", Reference: "registry.example.com/foo:1.0"}},
+				SkippedImages:  []string{"postgres"},
+				ChartReference: devPushChartRef,
+				DevChart: dogu.DevChart{
+					Name:      "nexus",
+					Namespace: "official",
+					Version:   "3.96.4-3-dev.20261103143012",
+					URL:       "oci://k3d-registry-proxy.localhost:5000/official/dogu/v3/charts/nexus",
+				},
+				Cluster: kube.Info{Context: "k3d-dev1", Server: "https://0.0.0.0:6443", Namespace: "ecosystem"},
 			}, nil
 		},
 	}
@@ -327,5 +346,89 @@ func TestDevPushCommand(t *testing.T) {
 		} {
 			assert.Contains(t, stdout, "(env: "+env+")")
 		}
+	})
+}
+
+func TestDevPushCommand_dryRun(t *testing.T) {
+	t.Run("plans with the options instead of pushing", func(t *testing.T) {
+		isolateDevPushEnv(t)
+		pusher := newSuccessfulDevPusher()
+		dir := t.TempDir()
+
+		_, _, err := runCldkWith(t, &MockReleaser{}, pusher, "--dir", dir, "dev-push", "--dry-run", "--reg", "localhost:5001",
+			"--skip-image", "postgres")
+
+		require.NoError(t, err)
+		assert.Empty(t, pusher.PushCalls())
+		require.Len(t, pusher.PlanCalls(), 1)
+		assert.Equal(t, devpush.Options{
+			Dir:             dir,
+			Registry:        "localhost:5001",
+			ClusterRegistry: "localhost:5001",
+			Builder:         "docker",
+			SkipImages:      []string{"postgres"},
+		}, pusher.PlanCalls()[0].Opts)
+	})
+
+	t.Run("prints the plan with the dogu resource as YAML", func(t *testing.T) {
+		isolateDevPushEnv(t)
+
+		stdout, _, err := runCldkWith(t, &MockReleaser{}, newSuccessfulDevPusher(), "dev-push", "--dry-run", "--reg", "localhost:5001")
+
+		require.NoError(t, err)
+		assert.Equal(t, `Dry run, nothing has been built, pushed or applied.
+Would build image nexus -> localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012
+Would replace image sidecar -> registry.example.com/foo:1.0
+Would skip image postgres
+Would push chart oci://`+devPushChartRef+`
+Would apply dogu nexus 3.96.4-3-dev.20261103143012 (context k3d-dev1, namespace ecosystem):
+apiVersion: k8s.cloudogu.com/v3beta1
+kind: Dogu
+metadata:
+  annotations:
+    k8s.cloudogu.com/dev-chart-url: oci://k3d-registry-proxy.localhost:5000/official/dogu/v3/charts/nexus
+  name: nexus
+spec:
+  doguApiVersion: v3
+  doguNamespace: official
+  name: nexus
+  version: 3.96.4-3-dev.20261103143012
+`, stdout)
+	})
+
+	t.Run("returns the error of the plan", func(t *testing.T) {
+		isolateDevPushEnv(t)
+		pusher := &MockDevPusher{
+			PlanFunc: func(_ context.Context, _ devpush.Options) (devpush.Plan, error) {
+				return devpush.Plan{}, errors.New("chart has lint errors")
+			},
+		}
+
+		stdout, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dev-push", "--dry-run", "--reg", "localhost:5001")
+
+		require.ErrorContains(t, err, "chart has lint errors")
+		assert.Empty(t, stdout)
+	})
+
+	t.Run("validates the flags before planning", func(t *testing.T) {
+		isolateDevPushEnv(t)
+		pusher := newSuccessfulDevPusher()
+
+		_, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dev-push", "--dry-run")
+
+		require.ErrorContains(t, err, "the dev registry is required")
+		assert.Empty(t, pusher.PlanCalls())
+	})
+
+	t.Run("takes no dry run from the environment", func(t *testing.T) {
+		isolateDevPushEnv(t)
+		t.Setenv("CLDK_DEV_DRY_RUN", "true")
+		pusher := newSuccessfulDevPusher()
+
+		_, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dev-push", "--reg", "localhost:5001")
+
+		require.NoError(t, err)
+		assert.Empty(t, pusher.PlanCalls())
+		assert.Len(t, pusher.PushCalls(), 1)
 	})
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/cloudogu/cldk/internal/chart"
 	"github.com/cloudogu/cldk/internal/devpush"
+	"github.com/cloudogu/cldk/internal/dogu"
 	"github.com/cloudogu/cldk/internal/kube"
 )
 
@@ -47,10 +48,12 @@ const (
 	flagBuildArg        = "build-arg"
 	flagReplaceImage    = "replace-image"
 	flagSkipImage       = "skip-image"
+	flagDryRun          = "dry-run"
 )
 
 // DevPusher pushes a dogu under development, see devpush.Pusher.
 type DevPusher interface {
+	Plan(ctx context.Context, opts devpush.Options) (devpush.Plan, error)
 	Push(ctx context.Context, opts devpush.Options) (devpush.Result, error)
 }
 
@@ -78,6 +81,9 @@ const devPushExample = `  # .env in the dogu repository, e.g. for a k3d cluster 
 
   # push the dogu in the current directory
   cldk dev-push
+
+  # check the dev push and print the plan and the dogu resource without pushing anything
+  cldk dev-push --dry-run
 
   # push the dogu in another directory to a personal namespace
   cldk --dir ../nexus dev-push --namespace personal
@@ -116,6 +122,20 @@ func newDevPushCommand(pusher DevPusher) *cobra.Command {
 				return err
 			}
 
+			dryRun, err := cmd.Flags().GetBool(flagDryRun)
+			if err != nil {
+				return err
+			}
+
+			if dryRun {
+				plan, err := pusher.Plan(cmd.Context(), options)
+				if err != nil {
+					return err
+				}
+
+				return printDevPushPlan(cmd.OutOrStdout(), plan)
+			}
+
 			result, err := pusher.Push(cmd.Context(), options)
 			if err != nil {
 				return err
@@ -138,6 +158,7 @@ func newDevPushCommand(pusher DevPusher) *cobra.Command {
 	cmd.Flags().StringArray(flagBuildArg, nil, "build argument KEY=VALUE for all images, overrides buildArgs of cldk.yaml; KEY alone takes the value from the environment; repeatable")
 	cmd.Flags().StringArray(flagReplaceImage, nil, "image of cldk.yaml as <name>=<reference> that is not built, but written into the chart with this reference; repeatable")
 	cmd.Flags().StringArray(flagSkipImage, nil, "image of cldk.yaml that is neither built nor written into the chart; repeatable")
+	cmd.Flags().Bool(flagDryRun, false, "run all checks including the cluster connection and the lint, print the plan and the dogu resource, but build, push and apply nothing")
 
 	return cmd
 }
@@ -301,6 +322,41 @@ func printDevPushResult(out io.Writer, result devpush.Result) error {
 		result.ChartReference,
 		result.Dogu, result.Version, cluster.Context, cluster.Namespace,
 		cluster.Context, cluster.Namespace, result.Dogu)
+
+	return err
+}
+
+// printDevPushPlan prints what a dry run would build, push and apply, with the dogu resource as YAML.
+func printDevPushPlan(out io.Writer, plan devpush.Plan) error {
+	resource, err := dogu.YAML(plan.DevChart)
+	if err != nil {
+		return err
+	}
+
+	if _, err := fmt.Fprintln(out, "Dry run, nothing has been built, pushed or applied."); err != nil {
+		return err
+	}
+
+	for _, img := range plan.Images {
+		if _, err := fmt.Fprintf(out, "Would build image %s -> %s\n", img.Name, img.Reference); err != nil {
+			return err
+		}
+	}
+
+	for _, img := range plan.ReplacedImages {
+		if _, err := fmt.Fprintf(out, "Would replace image %s -> %s\n", img.Name, img.Reference); err != nil {
+			return err
+		}
+	}
+
+	for _, imageName := range plan.SkippedImages {
+		if _, err := fmt.Fprintf(out, "Would skip image %s\n", imageName); err != nil {
+			return err
+		}
+	}
+
+	_, err = fmt.Fprintf(out, "Would push chart oci://%s\nWould apply dogu %s %s (context %s, namespace %s):\n%s",
+		plan.ChartReference, plan.DevChart.Name, plan.Version, plan.Cluster.Context, plan.Cluster.Namespace, resource)
 
 	return err
 }
