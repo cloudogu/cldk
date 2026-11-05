@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // optionResolver resolves an option from its flag and environment variable and logs its value and source.
@@ -66,4 +67,15 @@ func (r optionResolver) boolean(flag, env string) (bool, error) {
 	slog.Debug("resolved option", "option", flag, "value", parsed, "source", source)
 
 	return parsed, nil
+}
+
+// stringArray returns the values of a repeatable flag without environment variable, nil if it is not given.
+func (r optionResolver) stringArray(flag string) []string {
+	values := r.cmd.Flags().Lookup(flag).Value.(pflag.SliceValue).GetSlice()
+
+	if len(values) == 0 {
+		return nil
+	}
+
+	return values
 }

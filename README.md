@@ -69,18 +69,20 @@ cldk --help
   - The chart is checked with `helm lint` (including `values.schema.json`) before anything is built or pushed; errors abort, warnings are logged.
 - The dev registry, its access and the cluster are given as flags or environment variables, flags first:
 
-| Flag                          | Environment variable      | Description                                                                            |
-|-------------------------------|---------------------------|----------------------------------------------------------------------------------------|
-| `--reg <host[:port]>`         | `CLDK_DEV_REG`            | address of the dev registry to push to, required                                       |
-| `--cluster-reg <host[:port]>` | `CLDK_DEV_CLUSTER_REG`    | address of the dev registry as seen from the cluster, default `--reg`                  |
-| `--namespace <ns>`            | `CLDK_DEV_NAMESPACE`      | dogu namespace, default the `namespace` of `cldk.yaml`                                 |
-| `--plain-http`                | `CLDK_DEV_PLAIN_HTTP`     | dev registry without TLS                                                               |
-| `--insecure`                  | `CLDK_DEV_INSECURE`       | dev registry with an untrusted (e.g. self-signed) certificate                          |
-| `--kube-context <name>`       | `CLDK_DEV_KUBE_CONTEXT`   | kubeconfig context of the cluster, default the current context                         |
-| `--kube-namespace <ns>`       | `CLDK_DEV_KUBE_NAMESPACE` | Kubernetes namespace of the dogu, default the namespace of the context, else `default` |
-| `--builder <bin>`             | `CLDK_DEV_BUILDER`        | Docker compatible build CLI, default `docker`                                          |
-| `--platform <os/arch>`        | `CLDK_DEV_PLATFORM`       | platform the images are built for, passed to the builder                               |
-| `--build-arg KEY[=VALUE]`     |                           | build argument for all images, repeatable                                              |
+| Flag                           | Environment variable      | Description                                                                            |
+|--------------------------------|---------------------------|----------------------------------------------------------------------------------------|
+| `--reg <host[:port]>`          | `CLDK_DEV_REG`            | address of the dev registry to push to, required                                       |
+| `--cluster-reg <host[:port]>`  | `CLDK_DEV_CLUSTER_REG`    | address of the dev registry as seen from the cluster, default `--reg`                  |
+| `--namespace <ns>`             | `CLDK_DEV_NAMESPACE`      | dogu namespace, default the `namespace` of `cldk.yaml`                                 |
+| `--plain-http`                 | `CLDK_DEV_PLAIN_HTTP`     | dev registry without TLS                                                               |
+| `--insecure`                   | `CLDK_DEV_INSECURE`       | dev registry with an untrusted (e.g. self-signed) certificate                          |
+| `--kube-context <name>`        | `CLDK_DEV_KUBE_CONTEXT`   | kubeconfig context of the cluster, default the current context                         |
+| `--kube-namespace <ns>`        | `CLDK_DEV_KUBE_NAMESPACE` | Kubernetes namespace of the dogu, default the namespace of the context, else `default` |
+| `--builder <bin>`              | `CLDK_DEV_BUILDER`        | Docker compatible build CLI, default `docker`                                          |
+| `--platform <os/arch>`         | `CLDK_DEV_PLATFORM`       | platform the images are built for, passed to the builder                               |
+| `--build-arg KEY[=VALUE]`      |                           | build argument for all images, repeatable                                              |
+| `--replace-image <name>=<ref>` |                           | do not build the image `<name>`, write `<ref>` into the chart instead, repeatable      |
+| `--skip-image <name>`          |                           | neither build the image `<name>` nor write it into the chart, repeatable               |
 
   - Boolean variables take the values of Go's `strconv.ParseBool`, e.g. `true`, `false`, `1`, `0`; an empty variable counts as not set.
   - The dev registry is accessed with the stored credentials of `docker login` or `helm registry login`.
@@ -107,6 +109,17 @@ cldk --help
   - `dev-push` renders `mirror-patch-tpl.yaml` with the new references and merges the patches into the chart.
   - The chart is rewritten and linted before the first build.
 - The first failed build or push aborts with the image name and the exit code of the builder; images pushed before stay in the dev registry.
+- Replace or skip single images of `cldk.yaml` for one run, e.g. to work on one image only:
+
+  ```shell
+  # build nexus, take an existing sidecar image and leave the postgres image of the chart as it is
+  cldk dev-push --replace-image sidecar=registry.example.com/foo/sidecar:1.0 --skip-image postgres
+  ```
+
+  - `--replace-image <name>=<ref>` neither builds nor pushes the image; `<ref>` is written into the chart unchanged, to the same entry of `values.images` as the built image.
+  - `--skip-image <name>` neither builds the image nor changes its reference in the chart, as if it were not in `cldk.yaml`.
+  - Each name must be an image of `cldk.yaml` and may be given only once in both flags.
+  - If all images are replaced or skipped, nothing is built and the builder is not needed; if all are skipped, the chart is not rewritten.
 
 #### Installing in the cluster
 

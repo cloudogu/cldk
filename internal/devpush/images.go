@@ -23,26 +23,107 @@ type PushedImage struct {
 	Reference string
 }
 
-// plannedImage is an image to build, push and write into the chart.
+// ReplacedImage is an image written into the chart with a given reference instead of being built.
+type ReplacedImage struct {
+	// Name is the image name in cldk.yaml, e.g. "sidecar".
+	Name string
+	// Reference is the reference written into the chart, e.g. "registry.example.com/foo:1.0".
+	Reference string
+}
+
+// plannedImage is an image to write into the chart, either built and pushed or replaced by a given reference.
 type plannedImage struct {
 	// name is the image name in cldk.yaml.
 	name string
 	// key is the explicit key of the image in values.images of the mirror patch template, if any.
 	key string
-	// request builds the image tagged with its push reference.
+	// replaced tells that the image is not built, but written into the chart with clusterRef as given.
+	replaced bool
+	// request builds the image tagged with its push reference; unused for a replaced image.
 	request build.BuildRequest
-	// clusterRef is the reference of the image as seen from the cluster, which is written into the chart.
+	// clusterRef is the reference written into the chart: the push reference on the cluster address for a built
+	// image, the given reference for a replaced image.
 	clusterRef string
 }
 
-// planImages returns the images of the project file to build, ordered by name, with their paths resolved against
-// the project directory and the build arguments of the options merged into those of the project file.
-func planImages(opts Options, project cldkfile.ProjectFile, target, clusterTarget oci.Target, version string) []plannedImage {
-	images := make([]plannedImage, 0, len(project.Images))
+// imagePlan is what happens to the images of the project file.
+type imagePlan struct {
+	// images are the images to write into the chart, ordered by name.
+	images []plannedImage
+	// skipped are the names of the images that are neither built nor written into the chart, ordered by name.
+	skipped []string
+}
+
+// toBuild returns the images to build and push, ordered by name.
+func (p imagePlan) toBuild() []plannedImage {
+	var toBuild []plannedImage
+
+	for _, img := range p.images {
+		if !img.replaced {
+			toBuild = append(toBuild, img)
+		}
+	}
+
+	return toBuild
+}
+
+// replaced returns the images replaced by a given reference, ordered by name.
+func (p imagePlan) replaced() []ReplacedImage {
+	var replaced []ReplacedImage
+
+	for _, img := range p.images {
+		if img.replaced {
+			replaced = append(replaced, ReplacedImage{Name: img.name, Reference: img.clusterRef})
+		}
+	}
+
+	return replaced
+}
+
+// checkImageNames checks that the images to replace and to skip are images of the project file.
+func checkImageNames(opts Options, project cldkfile.ProjectFile) error {
+	known := strings.Join(slices.Sorted(maps.Keys(project.Images)), ", ")
+
+	for _, imageName := range slices.Sorted(maps.Keys(opts.ReplaceImages)) {
+		if _, ok := project.Images[imageName]; !ok {
+			return fmt.Errorf("unknown image %q of --replace-image, cldk.yaml has the images %s", imageName, known)
+		}
+	}
+
+	for _, imageName := range opts.SkipImages {
+		if _, ok := project.Images[imageName]; !ok {
+			return fmt.Errorf("unknown image %q of --skip-image, cldk.yaml has the images %s", imageName, known)
+		}
+	}
+
+	return nil
+}
+
+// planImages returns what happens to the images of the project file, ordered by name:
+//   - skipped images are left out
+//   - replaced images keep their given reference
+//   - other images are built
+func planImages(opts Options, project cldkfile.ProjectFile, target, clusterTarget oci.Target, version string) imagePlan {
+	plan := imagePlan{images: make([]plannedImage, 0, len(project.Images))}
 
 	for _, imageName := range slices.Sorted(maps.Keys(project.Images)) {
 		img := project.Images[imageName]
-		images = append(images, plannedImage{
+
+		if slices.Contains(opts.SkipImages, imageName) {
+			slog.Info("skipping image", "name", imageName)
+			plan.skipped = append(plan.skipped, imageName)
+
+			continue
+		}
+
+		if ref, ok := opts.ReplaceImages[imageName]; ok {
+			slog.Info("replacing image", "name", imageName, "reference", ref)
+			plan.images = append(plan.images, plannedImage{name: imageName, key: img.Key, replaced: true, clusterRef: ref})
+
+			continue
+		}
+
+		plan.images = append(plan.images, plannedImage{
 			name: imageName,
 			key:  img.Key,
 			request: build.BuildRequest{
@@ -57,7 +138,7 @@ func planImages(opts Options, project cldkfile.ProjectFile, target, clusterTarge
 		})
 	}
 
-	return images
+	return plan
 }
 
 // mergeBuildArgs returns the static build arguments of the project file, overridden by the build arguments of the
@@ -88,7 +169,7 @@ func mergeBuildArgs(static map[string]string, overrides []string) []string {
 }
 
 // createBuilder creates the builder and checks that its build CLI can be found.
-// Without images, no builder is needed and nil is returned.
+// Without images to build, no builder is needed and nil is returned.
 func (p *Pusher) createBuilder(ctx context.Context, binary string, images []plannedImage) (Builder, error) {
 	if len(images) == 0 {
 		return nil, nil

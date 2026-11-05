@@ -147,6 +147,32 @@ func TestDevPushCommand(t *testing.T) {
 		assert.Equal(t, kube.Options{Context: "k3d-dev2", Namespace: "ecosystem"}, opts.Kube)
 	})
 
+	t.Run("passes the replaced and skipped images to the dev pusher", func(t *testing.T) {
+		isolateDevPushEnv(t)
+
+		opts, _, _, err := runDevPush(t, t.TempDir(), "--reg", "localhost:5001",
+			"--replace-image", "sidecar=registry.example.com/foo/sidecar:1.0",
+			"--replace-image", "exporter=localhost:5001/official/exporter@sha256:"+strings.Repeat("a", 64),
+			"--skip-image", "postgres", "--skip-image", "redis")
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]string{
+			"sidecar":  "registry.example.com/foo/sidecar:1.0",
+			"exporter": "localhost:5001/official/exporter@sha256:" + strings.Repeat("a", 64),
+		}, opts.ReplaceImages)
+		assert.Equal(t, []string{"postgres", "redis"}, opts.SkipImages)
+	})
+
+	t.Run("passes neither replaced nor skipped images without the flags", func(t *testing.T) {
+		isolateDevPushEnv(t)
+
+		opts, _, _, err := runDevPush(t, t.TempDir(), "--reg", "localhost:5001")
+
+		require.NoError(t, err)
+		assert.Nil(t, opts.ReplaceImages)
+		assert.Nil(t, opts.SkipImages)
+	})
+
 	t.Run("takes no build arguments from the environment", func(t *testing.T) {
 		isolateDevPushEnv(t)
 		t.Setenv("CLDK_DEV_BUILD_ARG", "FOO=bar")
@@ -177,6 +203,31 @@ func TestDevPushCommand(t *testing.T) {
 		assert.True(t, strings.HasPrefix(stdout,
 			"Pushed image  localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012\n"+
 				"Pushed image  localhost:5001/official/dogu/v3/images/sidecar:3.96.4-3-dev.20261103143012\n"+
+				"Pushed chart  oci://"+devPushChartRef+"\n"), stdout)
+	})
+
+	t.Run("prints the replaced and skipped images after the pushed images", func(t *testing.T) {
+		isolateDevPushEnv(t)
+		pusher := newSuccessfulDevPusher()
+		successful := pusher.PushFunc
+		pusher.PushFunc = func(ctx context.Context, opts devpush.Options) (devpush.Result, error) {
+			result, err := successful(ctx, opts)
+			result.Images = []devpush.PushedImage{
+				{Name: "nexus", Reference: "localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012"},
+			}
+			result.ReplacedImages = []devpush.ReplacedImage{{Name: "sidecar", Reference: "registry.example.com/foo:1.0"}}
+			result.SkippedImages = []string{"postgres"}
+
+			return result, err
+		}
+
+		stdout, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dev-push", "--reg", "localhost:5001")
+
+		require.NoError(t, err)
+		assert.True(t, strings.HasPrefix(stdout,
+			"Pushed image  localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012\n"+
+				"Replaced image sidecar -> registry.example.com/foo:1.0\n"+
+				"Skipped image postgres\n"+
 				"Pushed chart  oci://"+devPushChartRef+"\n"), stdout)
 	})
 
@@ -238,6 +289,15 @@ func TestDevPushCommand(t *testing.T) {
 		{name: "a build argument without key", args: []string{"--reg", "localhost:5001", "--build-arg", "=bar"}, wantErr: `invalid build argument "=bar" of --build-arg: must be given as KEY=VALUE or KEY`},
 		{name: "an empty build argument", args: []string{"--reg", "localhost:5001", "--build-arg", ""}, wantErr: `invalid build argument "" of --build-arg`},
 		{name: "a build argument key with a space", args: []string{"--reg", "localhost:5001", "--build-arg", "FOO BAR=1"}, wantErr: `invalid build argument "FOO BAR=1"`},
+		{name: "a replaced image without reference", args: []string{"--reg", "localhost:5001", "--replace-image", "sidecar"}, wantErr: `invalid image replacement "sidecar" of --replace-image: must be given as <name>=<reference>`},
+		{name: "a replaced image with an empty reference", args: []string{"--reg", "localhost:5001", "--replace-image", "sidecar="}, wantErr: `invalid image replacement "sidecar=" of --replace-image`},
+		{name: "a replaced image without name", args: []string{"--reg", "localhost:5001", "--replace-image", "=registry.example.com/foo:1.0"}, wantErr: `invalid image replacement "=registry.example.com/foo:1.0" of --replace-image`},
+		{name: "a replaced image without registry", args: []string{"--reg", "localhost:5001", "--replace-image", "sidecar=foo/sidecar:1.0"}, wantErr: "image foo/sidecar:1.0 has no registry, give it explicitly, e.g. docker.io/foo/sidecar:1.0"},
+		{name: "an invalid replaced reference", args: []string{"--reg", "localhost:5001", "--replace-image", "sidecar=registry.example.com/Foo:1.0"}, wantErr: "invalid image reference registry.example.com/Foo:1.0"},
+		{name: "an image replaced twice", args: []string{"--reg", "localhost:5001", "--replace-image", "sidecar=registry.example.com/a:1", "--replace-image", "sidecar=registry.example.com/b:1"}, wantErr: `image "sidecar" is given more than once in --replace-image`},
+		{name: "an image skipped twice", args: []string{"--reg", "localhost:5001", "--skip-image", "postgres", "--skip-image", "postgres"}, wantErr: `image "postgres" is given more than once in --skip-image`},
+		{name: "an image both replaced and skipped", args: []string{"--reg", "localhost:5001", "--replace-image", "sidecar=registry.example.com/a:1", "--skip-image", "sidecar"}, wantErr: `image "sidecar" is given in both --replace-image and --skip-image`},
+		{name: "an empty skipped image", args: []string{"--reg", "localhost:5001", "--skip-image", ""}, wantErr: `invalid image name "" of --skip-image`},
 		{name: "a short flag for the namespace", args: []string{"--reg", "localhost:5001", "-n", "official"}, wantErr: "unknown shorthand flag: 'n'"},
 	}
 

@@ -37,6 +37,11 @@ type Options struct {
 	// BuildArgs are build arguments for all images as "KEY=VALUE" or "KEY", which takes the value from the
 	// environment. They override the build arguments of the same key in cldk.yaml.
 	BuildArgs []string
+	// ReplaceImages are images of cldk.yaml by name that are not built but written into the chart with the given
+	// reference, e.g. "registry.example.com/foo:1.0".
+	ReplaceImages map[string]string
+	// SkipImages are images of cldk.yaml by name that are neither built nor written into the chart.
+	SkipImages []string
 }
 
 // Result describes what has been pushed.
@@ -45,6 +50,12 @@ type Result struct {
 	Version string
 	// Images are the built and pushed images, ordered by name.
 	Images []PushedImage
+	// ReplacedImages are the images written into the chart with a given reference instead of being built, ordered by
+	// name.
+	ReplacedImages []ReplacedImage
+	// SkippedImages are the names of the images that have been neither built nor written into the chart, ordered by
+	// name.
+	SkippedImages []string
 	// ChartReference is the full reference of the pushed chart without scheme, e.g.
 	// "localhost:5001/official/dogu/v3/charts/nexus:3.96.4-3-dev.20261103143012".
 	ChartReference string
@@ -122,7 +133,7 @@ func (p *Pusher) Push(ctx context.Context, opts Options) (Result, error) {
 	clusterTarget := oci.Target{Registry: opts.ClusterRegistry, Namespace: target.Namespace}
 	images := planImages(opts, project, target, clusterTarget, version)
 
-	builder, err := p.createBuilder(ctx, opts.Builder, images)
+	builder, err := p.createBuilder(ctx, opts.Builder, images.toBuild())
 	if err != nil {
 		return Result{}, err
 	}
@@ -132,7 +143,7 @@ func (p *Pusher) Push(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, err
 	}
 
-	archive, err := prepareChart(c, version, images)
+	archive, err := prepareChart(c, version, images.images)
 	if err != nil {
 		return Result{}, err
 	}
@@ -142,7 +153,7 @@ func (p *Pusher) Push(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, err
 	}
 
-	pushed, err := buildImages(ctx, builder, images)
+	pushed, err := buildImages(ctx, builder, images.toBuild())
 	if err != nil {
 		return Result{}, err
 	}
@@ -167,7 +178,16 @@ func (p *Pusher) Push(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, fmt.Errorf("pushed chart %s, but %w", ref, err)
 	}
 
-	return Result{Version: version, Images: pushed, ChartReference: ref, ChartDigest: digest, Dogu: devChart.Name, Cluster: cluster}, nil
+	return Result{
+		Version:        version,
+		Images:         pushed,
+		ReplacedImages: images.replaced(),
+		SkippedImages:  images.skipped,
+		ChartReference: ref,
+		ChartDigest:    digest,
+		Dogu:           devChart.Name,
+		Cluster:        cluster,
+	}, nil
 }
 
 // loadProject reads the project file and returns it with the target in the dev registry.
@@ -176,6 +196,10 @@ func loadProject(opts Options) (cldkfile.ProjectFile, oci.Target, error) {
 
 	project, err := cldkfile.Load(opts.Dir)
 	if err != nil {
+		return cldkfile.ProjectFile{}, oci.Target{}, err
+	}
+
+	if err := checkImageNames(opts, project); err != nil {
 		return cldkfile.ProjectFile{}, oci.Target{}, err
 	}
 

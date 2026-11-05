@@ -7,11 +7,12 @@ import (
 	"io"
 	"log/slog"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
+	"github.com/cloudogu/cldk/internal/chart"
 	"github.com/cloudogu/cldk/internal/devpush"
 	"github.com/cloudogu/cldk/internal/kube"
 )
@@ -44,6 +45,8 @@ const (
 	flagBuilder         = "builder"
 	flagPlatform        = "platform"
 	flagBuildArg        = "build-arg"
+	flagReplaceImage    = "replace-image"
+	flagSkipImage       = "skip-image"
 )
 
 // DevPusher pushes a dogu under development, see devpush.Pusher.
@@ -83,7 +86,10 @@ const devPushExample = `  # .env in the dogu repository, e.g. for a k3d cluster 
   cldk dev-push --kube-context k3d-dev2 --kube-namespace ecosystem
 
   # build the images with podman for arm64 with a proxy from the environment
-  cldk dev-push --builder podman --platform linux/arm64 --build-arg HTTP_PROXY`
+  cldk dev-push --builder podman --platform linux/arm64 --build-arg HTTP_PROXY
+
+  # build nexus, take an existing sidecar image and leave the postgres image of the chart as it is
+  cldk dev-push --replace-image sidecar=registry.example.com/foo/sidecar:1.0 --skip-image postgres`
 
 // newDevPushCommand creates the dev-push command.
 func newDevPushCommand(pusher DevPusher) *cobra.Command {
@@ -130,6 +136,8 @@ func newDevPushCommand(pusher DevPusher) *cobra.Command {
 	cmd.Flags().String(flagBuilder, "", "Docker compatible build CLI the images are built and pushed with, default "+defaultBuilder+" (env: "+envDevBuilder+")")
 	cmd.Flags().String(flagPlatform, "", "platform the images are built for as os/arch, passed to the builder (env: "+envDevPlatform+")")
 	cmd.Flags().StringArray(flagBuildArg, nil, "build argument KEY=VALUE for all images, overrides buildArgs of cldk.yaml; KEY alone takes the value from the environment; repeatable")
+	cmd.Flags().StringArray(flagReplaceImage, nil, "image of cldk.yaml as <name>=<reference> that is not built, but written into the chart with this reference; repeatable")
+	cmd.Flags().StringArray(flagSkipImage, nil, "image of cldk.yaml that is neither built nor written into the chart; repeatable")
 
 	return cmd
 }
@@ -144,15 +152,15 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 		return devpush.Options{}, err
 	}
 
-	// GetStringArray would lose a single empty build argument, so the values are taken from the flag directly.
-	buildArgs := r.cmd.Flags().Lookup(flagBuildArg).Value.(pflag.SliceValue).GetSlice()
+	buildArgs := r.stringArray(flagBuildArg)
 
 	if err := validateBuildArgs(buildArgs); err != nil {
 		return devpush.Options{}, err
 	}
 
-	if len(buildArgs) == 0 {
-		buildArgs = nil
+	replaceImages, skipImages, err := resolveImageSelection(r.stringArray(flagReplaceImage), r.stringArray(flagSkipImage))
+	if err != nil {
+		return devpush.Options{}, err
 	}
 
 	opts := devpush.Options{
@@ -164,9 +172,11 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 			Context:   r.str(flagKubeContext, envDevKubeContext, "current context"),
 			Namespace: r.str(flagKubeNamespace, envDevKubeNamespace, "namespace of the context"),
 		},
-		Builder:   r.str(flagBuilder, envDevBuilder, defaultBuilder),
-		Platform:  r.str(flagPlatform, envDevPlatform, "platform of the builder"),
-		BuildArgs: buildArgs,
+		Builder:       r.str(flagBuilder, envDevBuilder, defaultBuilder),
+		Platform:      r.str(flagPlatform, envDevPlatform, "platform of the builder"),
+		BuildArgs:     buildArgs,
+		ReplaceImages: replaceImages,
+		SkipImages:    skipImages,
 	}
 
 	if opts.Builder == "" {
@@ -194,6 +204,51 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 	slog.Debug("cluster address of the dev registry", "address", opts.ClusterRegistry)
 
 	return opts, nil
+}
+
+// resolveImageSelection parses the images to replace, given as <name>=<reference>, and checks that each image is
+// given only once in both flags and has a valid reference with registry. Without images, both results are nil.
+func resolveImageSelection(replacements, skips []string) (map[string]string, []string, error) {
+	var replaceImages map[string]string
+
+	for _, replacement := range replacements {
+		imageName, ref, _ := strings.Cut(replacement, "=")
+
+		if imageName == "" || ref == "" {
+			return nil, nil, fmt.Errorf("invalid image replacement %q of --%s: must be given as <name>=<reference>, e.g. sidecar=registry.example.com/foo:1.0",
+				replacement, flagReplaceImage)
+		}
+
+		if _, ok := replaceImages[imageName]; ok {
+			return nil, nil, fmt.Errorf("image %q is given more than once in --%s", imageName, flagReplaceImage)
+		}
+
+		if err := chart.ValidateImageRef(ref); err != nil {
+			return nil, nil, fmt.Errorf("invalid image replacement %q of --%s: %w", replacement, flagReplaceImage, err)
+		}
+
+		if replaceImages == nil {
+			replaceImages = map[string]string{}
+		}
+
+		replaceImages[imageName] = ref
+	}
+
+	for i, imageName := range skips {
+		if imageName == "" {
+			return nil, nil, fmt.Errorf("invalid image name %q of --%s", imageName, flagSkipImage)
+		}
+
+		if slices.Contains(skips[:i], imageName) {
+			return nil, nil, fmt.Errorf("image %q is given more than once in --%s", imageName, flagSkipImage)
+		}
+
+		if _, ok := replaceImages[imageName]; ok {
+			return nil, nil, fmt.Errorf("image %q is given in both --%s and --%s", imageName, flagReplaceImage, flagSkipImage)
+		}
+	}
+
+	return replaceImages, skips, nil
 }
 
 // validateBuildArgs checks that each build argument is given as KEY=VALUE or KEY, with a key without whitespace.
@@ -225,6 +280,18 @@ func validateRegistryAddress(flag, env, address string) error {
 func printDevPushResult(out io.Writer, result devpush.Result) error {
 	for _, img := range result.Images {
 		if _, err := fmt.Fprintf(out, "Pushed image  %s\n", img.Reference); err != nil {
+			return err
+		}
+	}
+
+	for _, img := range result.ReplacedImages {
+		if _, err := fmt.Fprintf(out, "Replaced image %s -> %s\n", img.Name, img.Reference); err != nil {
+			return err
+		}
+	}
+
+	for _, imageName := range result.SkippedImages {
+		if _, err := fmt.Fprintf(out, "Skipped image %s\n", imageName); err != nil {
 			return err
 		}
 	}

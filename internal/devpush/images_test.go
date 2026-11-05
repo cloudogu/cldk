@@ -210,3 +210,151 @@ func TestPush_images(t *testing.T) {
 		assert.Contains(t, mirrorPatch, "postgresql: docker.io/library/postgres:14.18")
 	})
 }
+
+func TestPush_replaceAndSkipImages(t *testing.T) {
+	const (
+		reg         = "localhost:5001"
+		clusterReg  = "k3d-registry-proxy.localhost:5000"
+		replacedRef = "registry.example.com/foo/sidecar:1.0"
+	)
+
+	t.Run("writes a replaced image unchanged into the chart without building it", func(t *testing.T) {
+		reg := newTestRegistry(t)
+		pusher := newTestPusher()
+		builder := newTestBuilder()
+		pusher.newBuilder = func(string) Builder {
+			return builder
+		}
+		dir := writeProject(t, twoImagesYAML, nil)
+
+		result, err := pusher.Push(context.Background(), Options{
+			Dir: dir, Registry: reg, ClusterRegistry: clusterReg, PlainHTTP: true,
+			ReplaceImages: map[string]string{"sidecar": replacedRef},
+		})
+
+		require.NoError(t, err)
+		require.Len(t, builder.BuildCalls(), 1)
+		assert.Equal(t, reg+"/official/dogu/v3/images/nexus:"+wantDevVersion, builder.BuildCalls()[0].Req.Tag)
+		assert.Equal(t, []ReplacedImage{{Name: "sidecar", Reference: replacedRef}}, result.ReplacedImages)
+
+		values := pullChart(t, result.ChartReference).Values
+		assert.Equal(t, map[string]any{
+			"registry": "registry.example.com", "repository": "foo/sidecar", "tag": "1.0",
+		}, values["nexus"].(map[string]any)["saManager"].(map[string]any)["image"])
+		assert.Equal(t, map[string]any{
+			"registry": clusterReg, "repository": "official/dogu/v3/images/nexus", "tag": wantDevVersion,
+		}, values["nexus"].(map[string]any)["image"])
+	})
+
+	t.Run("neither builds nor rewrites a skipped image", func(t *testing.T) {
+		reg := newTestRegistry(t)
+		pusher := newTestPusher()
+		builder := newTestBuilder()
+		pusher.newBuilder = func(string) Builder {
+			return builder
+		}
+		dir := writeProject(t, twoImagesYAML, nil)
+		unchanged := loadTestChart(t).Values["nexus"].(map[string]any)["saManager"].(map[string]any)["image"]
+
+		result, err := pusher.Push(context.Background(), Options{
+			Dir: dir, Registry: reg, ClusterRegistry: clusterReg, PlainHTTP: true, SkipImages: []string{"sidecar"},
+		})
+
+		require.NoError(t, err)
+		require.Len(t, builder.BuildCalls(), 1)
+		assert.Equal(t, []string{"sidecar"}, result.SkippedImages)
+		assert.Equal(t, []PushedImage{{Name: "nexus", Reference: reg + "/official/dogu/v3/images/nexus:" + wantDevVersion}}, result.Images)
+
+		values := pullChart(t, result.ChartReference).Values
+		assert.Equal(t, unchanged, values["nexus"].(map[string]any)["saManager"].(map[string]any)["image"])
+	})
+
+	t.Run("neither checks the builder nor builds when all images are replaced or skipped", func(t *testing.T) {
+		pusher := newMockedPusher()
+		dir := writeProject(t, twoImagesYAML, nil)
+
+		result, err := pusher.Push(context.Background(), Options{
+			Dir: dir, Registry: reg,
+			ReplaceImages: map[string]string{"sidecar": replacedRef}, SkipImages: []string{"nexus"},
+		})
+
+		require.NoError(t, err)
+		assert.Empty(t, pusher.builder.CheckCalls())
+		assert.Empty(t, pusher.builderBinaries)
+		assert.Equal(t, []string{"push " + reg + "/official/dogu/v3/charts/nexus:" + wantDevVersion, "apply nexus"}, pusher.steps)
+		assert.Empty(t, result.Images)
+	})
+
+	t.Run("neither checks the builder nor builds when all images are replaced", func(t *testing.T) {
+		pusher := newMockedPusher()
+		dir := writeProject(t, twoImagesYAML, nil)
+
+		result, err := pusher.Push(context.Background(), Options{
+			Dir: dir, Registry: reg,
+			ReplaceImages: map[string]string{"nexus": "registry.example.com/foo/nexus:1.0", "sidecar": replacedRef},
+		})
+
+		require.NoError(t, err)
+		assert.Empty(t, pusher.builderBinaries)
+		assert.Empty(t, pusher.builder.BuildCalls())
+		assert.Equal(t, []ReplacedImage{
+			{Name: "nexus", Reference: "registry.example.com/foo/nexus:1.0"}, {Name: "sidecar", Reference: replacedRef},
+		}, result.ReplacedImages)
+	})
+
+	t.Run("needs no mirror patch template when all images are skipped", func(t *testing.T) {
+		pusher := newMockedPusher()
+		dir := writeProject(t, twoImagesYAML, nil)
+		require.NoError(t, os.Remove(filepath.Join(dir, "k8s", "helm", "mirror-patch-tpl.yaml")))
+
+		_, err := pusher.Push(context.Background(), Options{Dir: dir, Registry: reg, SkipImages: []string{"nexus", "sidecar"}})
+
+		require.NoError(t, err)
+		assert.Empty(t, pusher.builder.CheckCalls())
+	})
+
+	t.Run("needs the mirror patch template for a replaced image", func(t *testing.T) {
+		pusher := newMockedPusher()
+		dir := writeProject(t, twoImagesYAML, nil)
+		require.NoError(t, os.Remove(filepath.Join(dir, "k8s", "helm", "mirror-patch-tpl.yaml")))
+
+		_, err := pusher.Push(context.Background(), Options{
+			Dir: dir, Registry: reg, ReplaceImages: map[string]string{"sidecar": replacedRef}, SkipImages: []string{"nexus"},
+		})
+
+		require.ErrorContains(t, err, "mirror-patch-tpl.yaml")
+		assert.Empty(t, pusher.steps)
+	})
+
+	unknown := []struct {
+		name    string
+		opts    Options
+		wantErr string
+	}{
+		{
+			name:    "an unknown replaced image",
+			opts:    Options{ReplaceImages: map[string]string{"postgres": "docker.io/library/postgres:14"}},
+			wantErr: `unknown image "postgres" of --replace-image, cldk.yaml has the images nexus, sidecar`,
+		},
+		{
+			name:    "an unknown skipped image",
+			opts:    Options{SkipImages: []string{"nexus", "postgres"}},
+			wantErr: `unknown image "postgres" of --skip-image, cldk.yaml has the images nexus, sidecar`,
+		},
+	}
+
+	for _, tt := range unknown {
+		t.Run("aborts before loading the chart on "+tt.name, func(t *testing.T) {
+			pusher := newMockedPusher()
+			dir := writeProject(t, twoImagesYAML, map[string]string{"Chart.yaml": "invalid: ["})
+			tt.opts.Dir = dir
+			tt.opts.Registry = reg
+
+			_, err := pusher.Push(context.Background(), tt.opts)
+
+			require.ErrorContains(t, err, tt.wantErr)
+			assert.Empty(t, pusher.builderBinaries)
+			assert.Empty(t, pusher.steps)
+		})
+	}
+}

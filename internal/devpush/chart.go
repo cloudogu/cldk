@@ -34,7 +34,8 @@ func (p *Pusher) loadChart(dir string, project cldkfile.ProjectFile) (*helmchart
 	return c, version, nil
 }
 
-// prepareChart sets the dev version in the chart, points it to the cluster references of the images, lints it and returns the packed chart.
+// prepareChart sets the dev version in the chart, points it to the cluster references of the built images and to the
+// references of the replaced images, lints it and returns the packed chart.
 func prepareChart(c *helmchart.Chart, version string, images []plannedImage) ([]byte, error) {
 	chart.SetVersion(c, version)
 
@@ -54,8 +55,8 @@ func prepareChart(c *helmchart.Chart, version string, images []plannedImage) ([]
 	return chart.Pack(c)
 }
 
-// rewriteImages points the images of the chart to the cluster references of the images.
-// Without images, the chart is not rewritten and needs no mirror patch template.
+// rewriteImages points the images of the chart to the cluster references of the built images and to the references
+// of the replaced images. Without such images, the chart is not rewritten and needs no mirror patch template.
 func rewriteImages(c *helmchart.Chart, images []plannedImage) error {
 	if len(images) == 0 {
 		return nil
