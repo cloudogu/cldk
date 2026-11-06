@@ -64,7 +64,7 @@ func runDevPush(t *testing.T, dir string, args ...string) (opts devpush.Options,
 
 	pusher := newSuccessfulDevPusher()
 
-	stdout, stderr, err = runCldkWith(t, &MockReleaser{}, pusher, append([]string{"--dir", dir, "dev-push"}, args...)...)
+	stdout, stderr, err = runCldkWith(t, &MockReleaser{}, pusher, append([]string{"--dir", dir, "dogu", "dev-push"}, args...)...)
 	if err == nil {
 		require.Len(t, pusher.PushCalls(), 1)
 		opts = pusher.PushCalls()[0].Opts
@@ -216,7 +216,7 @@ func TestDevPushCommand(t *testing.T) {
 			return result, err
 		}
 
-		stdout, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dev-push", "--reg", "localhost:5001")
+		stdout, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dogu", "dev-push", "--reg", "localhost:5001")
 
 		require.NoError(t, err)
 		assert.True(t, strings.HasPrefix(stdout,
@@ -240,7 +240,7 @@ func TestDevPushCommand(t *testing.T) {
 			return result, err
 		}
 
-		stdout, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dev-push", "--reg", "localhost:5001")
+		stdout, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dogu", "dev-push", "--reg", "localhost:5001")
 
 		require.NoError(t, err)
 		assert.True(t, strings.HasPrefix(stdout,
@@ -283,7 +283,7 @@ func TestDevPushCommand(t *testing.T) {
 			},
 		}
 
-		stdout, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dev-push", "--reg", "localhost:5001")
+		stdout, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dogu", "dev-push", "--reg", "localhost:5001")
 
 		require.ErrorContains(t, err, "chart has lint errors")
 		assert.Empty(t, stdout)
@@ -336,7 +336,7 @@ func TestDevPushCommand(t *testing.T) {
 	}
 
 	t.Run("names the environment variable of each flag in the help", func(t *testing.T) {
-		stdout, _, err := runCldk(t, &MockReleaser{}, "dev-push", "--help")
+		stdout, _, err := runCldk(t, &MockReleaser{}, "dogu", "dev-push", "--help")
 
 		require.NoError(t, err)
 
@@ -355,7 +355,7 @@ func TestDevPushCommand_dryRun(t *testing.T) {
 		pusher := newSuccessfulDevPusher()
 		dir := t.TempDir()
 
-		_, _, err := runCldkWith(t, &MockReleaser{}, pusher, "--dir", dir, "dev-push", "--dry-run", "--reg", "localhost:5001",
+		_, _, err := runCldkWith(t, &MockReleaser{}, pusher, "--dir", dir, "dogu", "dev-push", "--dry-run", "--reg", "localhost:5001",
 			"--skip-image", "postgres")
 
 		require.NoError(t, err)
@@ -373,7 +373,7 @@ func TestDevPushCommand_dryRun(t *testing.T) {
 	t.Run("prints the plan with the dogu resource as YAML", func(t *testing.T) {
 		isolateDevPushEnv(t)
 
-		stdout, _, err := runCldkWith(t, &MockReleaser{}, newSuccessfulDevPusher(), "dev-push", "--dry-run", "--reg", "localhost:5001")
+		stdout, _, err := runCldkWith(t, &MockReleaser{}, newSuccessfulDevPusher(), "dogu", "dev-push", "--dry-run", "--reg", "localhost:5001")
 
 		require.NoError(t, err)
 		assert.Equal(t, `Dry run, nothing has been built, pushed or applied.
@@ -404,7 +404,7 @@ spec:
 			},
 		}
 
-		stdout, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dev-push", "--dry-run", "--reg", "localhost:5001")
+		stdout, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dogu", "dev-push", "--dry-run", "--reg", "localhost:5001")
 
 		require.ErrorContains(t, err, "chart has lint errors")
 		assert.Empty(t, stdout)
@@ -414,7 +414,7 @@ spec:
 		isolateDevPushEnv(t)
 		pusher := newSuccessfulDevPusher()
 
-		_, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dev-push", "--dry-run")
+		_, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dogu", "dev-push", "--dry-run")
 
 		require.ErrorContains(t, err, "the dev registry is required")
 		assert.Empty(t, pusher.PlanCalls())
@@ -425,7 +425,7 @@ spec:
 		t.Setenv("CLDK_DEV_DRY_RUN", "true")
 		pusher := newSuccessfulDevPusher()
 
-		_, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dev-push", "--reg", "localhost:5001")
+		_, _, err := runCldkWith(t, &MockReleaser{}, pusher, "dogu", "dev-push", "--reg", "localhost:5001")
 
 		require.NoError(t, err)
 		assert.Empty(t, pusher.PlanCalls())

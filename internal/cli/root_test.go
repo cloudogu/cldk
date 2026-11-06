@@ -56,3 +56,19 @@ func TestVerboseFlag(t *testing.T) {
 		})
 	}
 }
+
+func TestDoguCommands(t *testing.T) {
+	for _, command := range []string{"release", "dev-push"} {
+		t.Run(command+" is a subcommand of dogu only", func(t *testing.T) {
+			_, _, err := runCldk(t, &MockReleaser{}, command, "--help")
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), `unknown command "`+command+`"`)
+
+			stdout, _, err := runCldk(t, &MockReleaser{}, "dogu", command, "--help")
+
+			require.NoError(t, err)
+			assert.Contains(t, stdout, "cldk dogu "+command)
+		})
+	}
+}

@@ -4,21 +4,21 @@ Cloudogu (LOP) Development Kit helps developers in releasing and developing thei
 ## Usage
 
 ```shell
-cldk release --namespace <ns> <chart.tgz>   # release a packed dogu chart to registry.cloudogu.com
-cldk release --namespace <ns> -i <image> ... <chart.tgz>   # release the chart together with its images
-cldk release --dry-run --namespace <ns> -i <image> ... <chart.tgz>   # print the plan without pushing anything
-cldk dev-push       # push the dogu v3 under development in the working directory and install it in the current cluster
+cldk dogu release --namespace <ns> <chart.tgz>   # release a packed dogu chart to registry.cloudogu.com
+cldk dogu release --namespace <ns> -i <image> ... <chart.tgz>   # release the chart together with its images
+cldk dogu release --dry-run --namespace <ns> -i <image> ... <chart.tgz>   # print the plan without pushing anything
+cldk dogu dev-push   # push the dogu v3 under development in the working directory and install it in the current cluster
 cldk version        # print the version and commit of cldk
 cldk -v <command>   # enable debug logging of cldk, debug output of libraries like Helm is left out
 cldk -d <dir> <command>   # use <dir> as project directory instead of the working directory
 cldk --help
 ```
 
-### `release`
+### `dogu release`
 
-See [Releasing a dogu with `cldk release`](docs/operations/releasing_a_dogu_en.md) ([Deutsch](docs/operations/releasing_a_dogu_de.md)) for examples with `registry.cloudogu.com`.
+See [Releasing a dogu with `cldk dogu release`](docs/operations/releasing_a_dogu_en.md) ([Deutsch](docs/operations/releasing_a_dogu_de.md)) for examples with `registry.cloudogu.com`.
 
-- `cldk release` pushes the chart to `oci://<reg>/<ns>/dogu/v3/charts/<name>:<version>`, name and version are read from `Chart.yaml`. 
+- `cldk dogu release` pushes the chart to `oci://<reg>/<ns>/dogu/v3/charts/<name>:<version>`, name and version are read from `Chart.yaml`. 
 - Each image given with `-i` is copied unchanged (same digest) from its registry to `<reg>/<ns>/dogu/v3/images/<name>:<tag>`, named after the last path segment of the source and keeping its tag.
   - Use `-i <image>=<name>:<tag>` to set name and tag explicitly, e.g. `-i localhost:5001/local-dev/nexus/main:3.96.4-3=nexus:3.96.4-3`.
   - The images are read with the stored credentials of `docker login`.
@@ -41,10 +41,10 @@ See [Releasing a dogu with `cldk release`](docs/operations/releasing_a_dogu_en.m
 - The target registry is accessed with `--user`/`--pass` (or `CLDK_USER`/`CLDK_PASSWORD`) if given, else with the stored credentials of `helm registry login` or `docker login`.
 - Credentials are never persisted.
 
-### `dev-push`
+### `dogu dev-push`
 
-`cldk dev-push` pushes the working state of a dogu v3 repository under a new dev version to a dev registry and installs it in a cluster.
-See [Deploying a dogu with `cldk dev-push`](docs/operations/deploying_a_dogu_with_dev_push_en.md) ([Deutsch](docs/operations/deploying_a_dogu_with_dev_push_de.md)) for the prerequisites in the cluster, examples with `registry.cloudogu.com` and a local k3d cluster, and how to return to the regular dogu.
+`cldk dogu dev-push` pushes the working state of a dogu v3 repository under a new dev version to a dev registry and installs it in a cluster.
+See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dogu_with_dev_push_en.md) ([Deutsch](docs/operations/deploying_a_dogu_with_dev_push_de.md)) for the prerequisites in the cluster, examples with `registry.cloudogu.com` and a local k3d cluster, and how to return to the regular dogu.
 
 - The project directory (see below) needs a `cldk.yaml`:
 
@@ -117,7 +117,7 @@ See [Deploying a dogu with `cldk dev-push`](docs/operations/deploying_a_dogu_wit
 
   ```shell
   # build nexus, take an existing sidecar image and leave the postgres image of the chart as it is
-  cldk dev-push --replace-image sidecar=registry.example.com/foo/sidecar:1.0 --skip-image postgres
+  cldk dogu dev-push --replace-image sidecar=registry.example.com/foo/sidecar:1.0 --skip-image postgres
   ```
 
   - `--replace-image <name>=<ref>` neither builds nor pushes the image; `<ref>` is written into the chart unchanged, to the same entry of `values.images` as the built image.
@@ -143,7 +143,7 @@ See [Deploying a dogu with `cldk dev-push`](docs/operations/deploying_a_dogu_wit
 - Use `--dry-run` to check a dev push without building, pushing or applying anything:
 
   ```shell
-  cldk dev-push --dry-run
+  cldk dogu dev-push --dry-run
   ```
 
   - It runs all checks of a dev push: `cldk.yaml`, the chart and its version, the builder (if an image is built), the connection to the cluster, and the rewrite and lint of the chart.

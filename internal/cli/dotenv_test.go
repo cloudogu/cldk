@@ -35,7 +35,7 @@ func TestDotEnv(t *testing.T) {
 		dir := writeDotEnv(t, "CLDK_USER=releaser\nCLDK_PASSWORD=s3cret\n")
 		releaser := newSuccessfulReleaser()
 
-		_, _, err := runCldk(t, releaser, "--dir", dir, "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
+		_, _, err := runCldk(t, releaser, "--dir", dir, "dogu", "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
@@ -49,7 +49,7 @@ func TestDotEnv(t *testing.T) {
 		dir := writeDotEnv(t, "CLDK_USER=someone\nCLDK_PASSWORD=wrong\n")
 		releaser := newSuccessfulReleaser()
 
-		_, _, err := runCldk(t, releaser, "-d", dir, "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
+		_, _, err := runCldk(t, releaser, "-d", dir, "dogu", "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
@@ -62,7 +62,7 @@ func TestDotEnv(t *testing.T) {
 		dir := writeDotEnv(t, "CLDK_USER=someone\nCLDK_PASSWORD=wrong\n")
 		releaser := newSuccessfulReleaser()
 
-		_, _, err := runCldk(t, releaser, "-d", dir, "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
+		_, _, err := runCldk(t, releaser, "-d", dir, "dogu", "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
@@ -75,7 +75,7 @@ func TestDotEnv(t *testing.T) {
 		t.Chdir(writeDotEnv(t, "CLDK_USER=releaser\nCLDK_PASSWORD=s3cret\n"))
 		releaser := newSuccessfulReleaser()
 
-		_, _, err := runCldk(t, releaser, "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
+		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
@@ -86,7 +86,7 @@ func TestDotEnv(t *testing.T) {
 		isolateCredentialEnv(t)
 		releaser := newSuccessfulReleaser()
 
-		_, _, err := runCldk(t, releaser, "--dir", t.TempDir(), "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
+		_, _, err := runCldk(t, releaser, "--dir", t.TempDir(), "dogu", "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
@@ -97,7 +97,7 @@ func TestDotEnv(t *testing.T) {
 		dir := writeDotEnv(t, "CLDK_USER releaser\n")
 		releaser := newSuccessfulReleaser()
 
-		_, _, err := runCldk(t, releaser, "--dir", dir, "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
+		_, _, err := runCldk(t, releaser, "--dir", dir, "dogu", "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), filepath.Join(dir, ".env"))

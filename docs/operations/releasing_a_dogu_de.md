@@ -1,6 +1,6 @@
-# Ein Dogu mit `cldk release` veröffentlichen
+# Ein Dogu mit `cldk dogu release` veröffentlichen
 
-`cldk release` veröffentlicht ein gepacktes Chart eines v3-Dogus und optional seine Images in einer Registry.
+`cldk dogu release` veröffentlicht ein gepacktes Chart eines v3-Dogus und optional seine Images in einer Registry.
 Die Images werden unverändert mit demselben Digest kopiert, das Chart bekommt die neuen Image-Referenzen.
 
 Diese Anleitung zeigt zwei Beispiele mit dem Nexus-Dogu, beide mit `registry.cloudogu.com` und dem Namespace `testing`:
@@ -8,7 +8,7 @@ Diese Anleitung zeigt zwei Beispiele mit dem Nexus-Dogu, beide mit `registry.clo
 - [Beispiel 1](#beispiel-1-chart-ohne-images): nur das Chart veröffentlichen
 - [Beispiel 2](#beispiel-2-chart-mit-image): das Chart zusammen mit dem Nexus-Image veröffentlichen
 
-Alle Optionen beschreibt die [README](../../README.md#release).
+Alle Optionen beschreibt die [README](../../README.md#dogu-release).
 
 ## Ablauf
 
@@ -24,7 +24,7 @@ Bereits veröffentlichte Artefakte werden nie still überschrieben, siehe [Beste
 
 ### Gepacktes Chart
 
-`cldk release` nimmt das Chart als `.tgz`, wie `helm package` es erzeugt:
+`cldk dogu release` nimmt das Chart als `.tgz`, wie `helm package` es erzeugt:
 
 ```shell
 helm package k8s/helm -d target
@@ -36,7 +36,7 @@ Sie ist unabhängig von der Version der Anwendung und den Tags ihrer Images, bei
 
 ### Images in einer Registry
 
-`cldk release` liest Images nur aus Registries, nie aus dem lokalen Docker-Daemon.
+`cldk dogu release` liest Images nur aus Registries, nie aus dem lokalen Docker-Daemon.
 Ein lokal gebautes Image muss deshalb vorher in eine Registry gepusht werden, z.B. in die Registry der CI:
 
 ```shell
@@ -79,7 +79,7 @@ Die Zugangsdaten brauchen Schreibrecht auf den Ziel-Namespace, in den Beispielen
 Das Chart wird so veröffentlicht, wie es ist; seine Image-Referenzen zeigen weiter auf die Einträge aus `values.yaml`.
 
 ```shell
-cldk release --dry-run --namespace testing target/nexus-1.2.3.tgz
+cldk dogu release --dry-run --namespace testing target/nexus-1.2.3.tgz
 ```
 
 ```
@@ -88,7 +88,7 @@ Would release chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2
 ```
 
 ```shell
-cldk release --namespace testing target/nexus-1.2.3.tgz
+cldk dogu release --namespace testing target/nexus-1.2.3.tgz
 ```
 
 ```
@@ -103,7 +103,7 @@ Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3@sh
 Das Nexus-Image aus der CI-Registry wird zusammen mit dem Chart veröffentlicht:
 
 ```shell
-cldk release --dry-run --namespace testing \
+cldk dogu release --dry-run --namespace testing \
   -i ci-registry.example.com/nexus:3.96.4 \
   target/nexus-1.2.3.tgz
 ```
@@ -115,7 +115,7 @@ Would release chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2
 ```
 
 ```shell
-cldk release --namespace testing \
+cldk dogu release --namespace testing \
   -i ci-registry.example.com/nexus:3.96.4 \
   target/nexus-1.2.3.tgz
 ```
@@ -138,7 +138,7 @@ Das Chart wird unter seiner eigenen Version `1.2.3` veröffentlicht.
 Passen Name oder Tag der Quelle nicht, setzt `=<name>:<tag>` sie explizit:
 
 ```shell
-cldk release --namespace testing \
+cldk dogu release --namespace testing \
   -i ci-registry.example.com/dogus/nexus-build:42=nexus:3.96.4 \
   target/nexus-1.2.3.tgz
 ```
@@ -146,7 +146,7 @@ cldk release --namespace testing \
 Passt kein oder mehr als ein Eintrag von `values.images` zum Namen, ordnet `--image-key <name>=<key>` das Image zu:
 
 ```shell
-cldk release --namespace testing \
+cldk dogu release --namespace testing \
   -i ci-registry.example.com/sa-sidecar:0.1.2=service-account-producer-sidecar:0.1.2 \
   --image-key service-account-producer-sidecar=nexusSaManager \
   target/nexus-1.2.3.tgz
@@ -167,7 +167,7 @@ Ein abgebrochenes Release lässt sich deshalb einfach wiederholen: Schon kopiert
 Mit `--force` werden Image-Tags und Chart-Version bewusst überschrieben, z.B. um ein Release in `testing` zu korrigieren:
 
 ```shell
-cldk release --force --namespace testing -i ci-registry.example.com/nexus:3.96.4 target/nexus-1.2.3.tgz
+cldk dogu release --force --namespace testing -i ci-registry.example.com/nexus:3.96.4 target/nexus-1.2.3.tgz
 ```
 
 ## Ergebnis prüfen

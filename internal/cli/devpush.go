@@ -80,22 +80,22 @@ const devPushExample = `  # .env in the dogu repository, e.g. for a k3d cluster 
     nexus: {}
 
   # push the dogu in the current directory
-  cldk dev-push
+  cldk dogu dev-push
 
   # check the dev push and print the plan and the dogu resource without pushing anything
-  cldk dev-push --dry-run
+  cldk dogu dev-push --dry-run
 
   # push the dogu in another directory to a personal namespace
-  cldk --dir ../nexus dev-push --namespace personal
+  cldk --dir ../nexus dogu dev-push --namespace personal
 
   # push the dogu to another cluster
-  cldk dev-push --kube-context k3d-dev2 --kube-namespace ecosystem
+  cldk dogu dev-push --kube-context k3d-dev2 --kube-namespace ecosystem
 
   # build the images with podman for arm64 with a proxy from the environment
-  cldk dev-push --builder podman --platform linux/arm64 --build-arg HTTP_PROXY
+  cldk dogu dev-push --builder podman --platform linux/arm64 --build-arg HTTP_PROXY
 
   # build nexus, take an existing sidecar image and leave the postgres image of the chart as it is
-  cldk dev-push --replace-image sidecar=registry.example.com/foo/sidecar:1.0 --skip-image postgres`
+  cldk dogu dev-push --replace-image sidecar=registry.example.com/foo/sidecar:1.0 --skip-image postgres`
 
 // newDevPushCommand creates the dev-push command.
 func newDevPushCommand(pusher DevPusher) *cobra.Command {
@@ -106,7 +106,7 @@ func newDevPushCommand(pusher DevPusher) *cobra.Command {
 		Example: devPushExample,
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
-				return fmt.Errorf("dev-push takes no arguments, give the project directory with --dir, e.g. cldk --dir %s dev-push", args[0])
+				return fmt.Errorf("dev-push takes no arguments, give the project directory with --dir, e.g. cldk --dir %s dogu dev-push", args[0])
 			}
 
 			return nil

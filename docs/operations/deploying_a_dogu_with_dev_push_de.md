@@ -1,6 +1,6 @@
-# Ein Dogu mit `cldk dev-push` in einen Cluster bringen
+# Ein Dogu mit `cldk dogu dev-push` in einen Cluster bringen
 
-`cldk dev-push` bringt den Arbeitsstand eines v3-Dogus in einen Cluster, ohne das Dogu zu releasen.
+`cldk dogu dev-push` bringt den Arbeitsstand eines v3-Dogus in einen Cluster, ohne das Dogu zu releasen.
 Der Befehl baut die Images aus der `cldk.yaml`, pusht sie und das Chart unter einer neuen Dev-Version in eine Registry und legt die Dogu-CR an oder aktualisiert sie.
 Der Dogu-Operator installiert das Dogu dann aus diesem Chart statt aus der Dogu-Registry.
 
@@ -9,7 +9,7 @@ Diese Anleitung zeigt zwei Beispiele mit dem Nexus-Dogu:
 - [Beispiel 1](#beispiel-1-cluster-mit-registrycloudogucom-und-namespace-testing): ein normaler Cluster, der seine Dogus von `registry.cloudogu.com` bezieht
 - [Beispiel 2](#beispiel-2-lokaler-k3d-cluster-mit-der-k3d-registry): ein lokaler k3d-Cluster mit der Registry von k3d
 
-Alle Optionen beschreibt die [README](../../README.md#dev-push).
+Alle Optionen beschreibt die [README](../../README.md#dogu-dev-push).
 
 ## Ablauf
 
@@ -107,8 +107,8 @@ CLDK_DEV_NAMESPACE=testing
 ### Push
 
 ```shell
-cldk dev-push --dry-run
-cldk dev-push
+cldk dogu dev-push --dry-run
+cldk dogu dev-push
 ```
 
 Ergebnis:
@@ -176,8 +176,8 @@ Docker behandelt `localhost` ohnehin als unsichere Registry; eine Anmeldung ist 
 ### Push
 
 ```shell
-cldk dev-push --dry-run
-cldk dev-push
+cldk dogu dev-push --dry-run
+cldk dogu dev-push
 ```
 
 Ergebnis:
@@ -220,9 +220,9 @@ Mit `--replace-image` und `--skip-image` lassen sich Images für einen Push ausl
 
 ```shell
 # nichts bauen, die Image-Referenz aus values.yaml bleibt
-cldk dev-push --skip-image nexus
+cldk dogu dev-push --skip-image nexus
 # nichts bauen, ein vorhandenes Image ins Chart schreiben
-cldk dev-push --replace-image nexus=registry.cloudogu.com/official/nexus:3.96.4-3
+cldk dogu dev-push --replace-image nexus=registry.cloudogu.com/official/nexus:3.96.4-3
 ```
 
 ## Zurück zum regulären Dogu

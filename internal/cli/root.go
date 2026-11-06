@@ -56,8 +56,7 @@ func NewRootCommand(info BuildInfo, releaser Releaser, devPusher DevPusher) *cob
 	root.PersistentFlags().StringVarP(&dir, flagDir, "d", ".", "project directory, its .env is loaded into the environment")
 
 	root.AddCommand(newVersionCommand(info))
-	root.AddCommand(newReleaseCommand(releaser))
-	root.AddCommand(newDevPushCommand(devPusher))
+	root.AddCommand(newDoguCommand(releaser, devPusher))
 
 	return root
 }

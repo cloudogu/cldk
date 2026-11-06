@@ -1,6 +1,6 @@
-# Releasing a dogu with `cldk release`
+# Releasing a dogu with `cldk dogu release`
 
-`cldk release` publishes a packed chart of a dogu v3 and optionally its images to a registry.
+`cldk dogu release` publishes a packed chart of a dogu v3 and optionally its images to a registry.
 The images are copied unchanged with the same digest, the chart gets the new image references.
 
 This guide shows two examples with the Nexus dogu, both with `registry.cloudogu.com` and the namespace `testing`:
@@ -8,7 +8,7 @@ This guide shows two examples with the Nexus dogu, both with `registry.cloudogu.
 - [Example 1](#example-1-chart-without-images): release the chart only
 - [Example 2](#example-2-chart-with-image): release the chart together with the Nexus image
 
-All options are described in the [README](../../README.md#release).
+All options are described in the [README](../../README.md#dogu-release).
 
 ## How it works
 
@@ -24,7 +24,7 @@ Released artifacts are never overwritten silently, see [Existing artifacts](#exi
 
 ### Packed chart
 
-`cldk release` takes the chart as `.tgz`, as created by `helm package`:
+`cldk dogu release` takes the chart as `.tgz`, as created by `helm package`:
 
 ```shell
 helm package k8s/helm -d target
@@ -36,7 +36,7 @@ It is independent of the version of the application and the tags of its images, 
 
 ### Images in a registry
 
-`cldk release` only reads images from registries, never from the local docker daemon.
+`cldk dogu release` only reads images from registries, never from the local docker daemon.
 So push a locally built image to a registry first, e.g. to the registry of the CI:
 
 ```shell
@@ -79,7 +79,7 @@ The credentials need write access to the target namespace, `testing` in the exam
 The chart is released as it is; its image references keep pointing to the entries of `values.yaml`.
 
 ```shell
-cldk release --dry-run --namespace testing target/nexus-1.2.3.tgz
+cldk dogu release --dry-run --namespace testing target/nexus-1.2.3.tgz
 ```
 
 ```
@@ -88,7 +88,7 @@ Would release chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2
 ```
 
 ```shell
-cldk release --namespace testing target/nexus-1.2.3.tgz
+cldk dogu release --namespace testing target/nexus-1.2.3.tgz
 ```
 
 ```
@@ -103,7 +103,7 @@ Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3@sh
 The Nexus image of the CI registry is released together with the chart:
 
 ```shell
-cldk release --dry-run --namespace testing \
+cldk dogu release --dry-run --namespace testing \
   -i ci-registry.example.com/nexus:3.96.4 \
   target/nexus-1.2.3.tgz
 ```
@@ -115,7 +115,7 @@ Would release chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2
 ```
 
 ```shell
-cldk release --namespace testing \
+cldk dogu release --namespace testing \
   -i ci-registry.example.com/nexus:3.96.4 \
   target/nexus-1.2.3.tgz
 ```
@@ -138,7 +138,7 @@ The chart is released under its own version `1.2.3`.
 If the name or tag of the source does not fit, set them explicitly with `=<name>:<tag>`:
 
 ```shell
-cldk release --namespace testing \
+cldk dogu release --namespace testing \
   -i ci-registry.example.com/dogus/nexus-build:42=nexus:3.96.4 \
   target/nexus-1.2.3.tgz
 ```
@@ -146,7 +146,7 @@ cldk release --namespace testing \
 If no or more than one entry of `values.images` fits the name, assign the image with `--image-key <name>=<key>`:
 
 ```shell
-cldk release --namespace testing \
+cldk dogu release --namespace testing \
   -i ci-registry.example.com/sa-sidecar:0.1.2=service-account-producer-sidecar:0.1.2 \
   --image-key service-account-producer-sidecar=nexusSaManager \
   target/nexus-1.2.3.tgz
@@ -167,7 +167,7 @@ So an aborted release can simply be run again: images copied before are skipped.
 With `--force`, image tags and the chart version are overwritten on purpose, e.g. to correct a release in `testing`:
 
 ```shell
-cldk release --force --namespace testing -i ci-registry.example.com/nexus:3.96.4 target/nexus-1.2.3.tgz
+cldk dogu release --force --namespace testing -i ci-registry.example.com/nexus:3.96.4 target/nexus-1.2.3.tgz
 ```
 
 ## Checking the result
