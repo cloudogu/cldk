@@ -98,7 +98,7 @@ type Result struct {
 	ChartReference string
 	// ChartStatus is the state of the chart in the target. A chart is never skipped.
 	ChartStatus Status
-	// ChartDigest is the manifest digest of the released chart.
+	// ChartDigest is the manifest digest of the released chart, empty if the chart has not been released.
 	ChartDigest string
 }
 
@@ -124,6 +124,8 @@ func (r *Releaser) Plan(ctx context.Context, chartPath string, target oci.Target
 // Release publishes the packed chart archive (.tgz) at chartPath to the target.
 // It pushes nothing if the plan has conflicts. The images are released before the chart, so that a released chart
 // never refers to missing images.
+// If a push fails, the result holds the images released before the failure and no ChartDigest, so that the caller
+// can report what already is in the target.
 func (r *Releaser) Release(ctx context.Context, chartPath string, target oci.Target, opts Options) (Result, error) {
 	p, err := newReleasePlan(ctx, chartPath, target, opts)
 	if err != nil {
@@ -220,13 +222,14 @@ func (p *releasePlan) summary() Plan {
 }
 
 // push pushes the images in their order and then the chart.
+// If a push fails, it returns the error together with what has been released before.
 func (p *releasePlan) push(ctx context.Context) (Result, error) {
 	result := Result{ChartReference: p.chartRef, ChartStatus: p.chartStatus}
 
 	for _, img := range p.images {
 		released, err := pushCheckedImage(ctx, p.client, img)
 		if err != nil {
-			return Result{}, err
+			return result, err
 		}
 
 		result.Images = append(result.Images, released)
@@ -236,7 +239,7 @@ func (p *releasePlan) push(ctx context.Context) (Result, error) {
 
 	digest, err := p.client.PushChart(ctx, p.archive, p.chartRef)
 	if err != nil {
-		return Result{}, err
+		return result, err
 	}
 
 	result.ChartDigest = digest

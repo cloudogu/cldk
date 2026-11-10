@@ -62,12 +62,10 @@ func newReleaseCommand(releaser Releaser) *cobra.Command {
 				return errors.Join(printPlan(cmd.OutOrStdout(), plan), plan.Conflicts())
 			}
 
+			// After a failed push, the result shows what already has been released.
 			result, err := releaser.Release(cmd.Context(), args[0], target, opts)
-			if err != nil {
-				return err
-			}
 
-			return printResult(cmd.OutOrStdout(), result)
+			return errors.Join(printResult(cmd.OutOrStdout(), result), err)
 		},
 	}
 
@@ -86,7 +84,7 @@ func newReleaseCommand(releaser Releaser) *cobra.Command {
 	return cmd
 }
 
-// printResult prints the released images and the released chart.
+// printResult prints the released images and the released chart, if it has been released.
 func printResult(out io.Writer, result release.Result) error {
 	for _, img := range result.Images {
 		format := "Released image %s -> %s@%s\n"
@@ -101,6 +99,10 @@ func printResult(out io.Writer, result release.Result) error {
 		if _, err := fmt.Fprintf(out, format, img.Source, img.Reference, img.Digest); err != nil {
 			return err
 		}
+	}
+
+	if result.ChartDigest == "" {
+		return nil
 	}
 
 	format := "Released chart oci://%s@%s\n"

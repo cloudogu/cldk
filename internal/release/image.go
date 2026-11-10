@@ -115,6 +115,10 @@ func parseImage(spec string, target oci.Target) (imageSpec, error) {
 // parseImageKeys parses the image keys as given in Options.ImageKeys and returns the keys by target name.
 // Each image key must refer to the target name of one of the images.
 func parseImageKeys(specs []string, images []imageSpec) (map[string]string, error) {
+	if len(specs) > 0 && len(images) == 0 {
+		return nil, errors.New("image keys require images to release (--image-key needs -i)")
+	}
+
 	targetNames := make([]string, 0, len(images))
 
 	for _, img := range images {
@@ -122,10 +126,6 @@ func parseImageKeys(specs []string, images []imageSpec) (map[string]string, erro
 	}
 
 	slices.Sort(targetNames)
-
-	if len(specs) > 0 && len(images) == 0 {
-		return nil, errors.New("image keys require images to release (--image-key needs -i)")
-	}
 
 	keys := make(map[string]string, len(specs))
 

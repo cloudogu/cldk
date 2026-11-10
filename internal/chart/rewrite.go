@@ -135,17 +135,19 @@ func assignImages(images map[string]string, targets map[string]string, explicitK
 	targetByKey := map[string]string{}
 
 	for _, targetName := range slices.Sorted(maps.Keys(targets)) {
-		key, err := assignImage(images, keysByName, targetName, targets[targetName], explicitKeys)
+		targetRef := targets[targetName]
+
+		key, err := assignImage(images, keysByName, targetName, targetRef, explicitKeys)
 		if err != nil {
 			return nil, err
 		}
 
 		if other, ok := targetByKey[key]; ok {
-			return nil, fmt.Errorf("images %s and %s are both assigned to values.images.%s", other, targets[targetName], key)
+			return nil, fmt.Errorf("images %s and %s are both assigned to values.images.%s", other, targetRef, key)
 		}
 
-		targetByKey[key] = targets[targetName]
-		changes = append(changes, Change{Key: key, Old: images[key], New: targets[targetName]})
+		targetByKey[key] = targetRef
+		changes = append(changes, Change{Key: key, Old: images[key], New: targetRef})
 	}
 
 	return changes, nil
@@ -162,7 +164,6 @@ func assignImage(images map[string]string, keysByName map[string][]string, targe
 	}
 
 	candidates := keysByName[targetName]
-	slices.Sort(candidates)
 
 	switch len(candidates) {
 	case 0:
@@ -171,6 +172,8 @@ func assignImage(images map[string]string, keysByName map[string][]string, targe
 	case 1:
 		return candidates[0], nil
 	default:
+		slices.Sort(candidates)
+
 		return "", fmt.Errorf("several entries in values.images of %s have the repository name %q of image %s: %s; choose one with --image-key %s=<key>",
 			mirrorPatchTemplateFile, targetName, targetRef, strings.Join(candidates, ", "), targetName)
 	}
@@ -188,7 +191,7 @@ func (tpl *patchTemplate) renderPatches() (map[string]map[string]any, error) {
 		return nil, fmt.Errorf("failed to marshal patches of %s: %w", mirrorPatchTemplateFile, err)
 	}
 
-	goTemplate, err := template.New("patches").Funcs(patchTemplateFuncs()).Parse(string(raw))
+	goTemplate, err := template.New("patches").Option("missingkey=error").Funcs(patchTemplateFuncs()).Parse(string(raw))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse patches of %s: %w", mirrorPatchTemplateFile, err)
 	}

@@ -303,6 +303,18 @@ patches:
 				wantErr: "failed to render patches of mirror-patch-tpl.yaml",
 			},
 			{
+				name: "if a patch uses an unknown image directly",
+				modify: withMirrorPatchTemplate(`apiVersion: v1
+values:
+  images:
+    nexus: registry.cloudogu.com/official/nexus:3.96.4-3
+patches:
+  values.yaml:
+    image: "{{ .images.unknown }}"
+`),
+				wantErr: `map has no entry for key "unknown"`,
+			},
+			{
 				name: "if a patch refers to a file that does not exist",
 				modify: withMirrorPatchTemplate(`apiVersion: v1
 values:
