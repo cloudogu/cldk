@@ -114,7 +114,7 @@ func TestNewChartClient(t *testing.T) {
 			client, err := newChartClient(tt.target, newTransport(tt.target))
 			require.NoError(t, err)
 
-			_, err = client.Resolve(host + "/testing/dogu/v3/charts/nexus:3.96.4-3")
+			_, err = client.Resolve(host + "/testing/dogu/v3/charts/nexus:1.2.3")
 
 			require.Error(t, err) // the registry is empty, so the chart is never found
 			if tt.wantErr != "" {

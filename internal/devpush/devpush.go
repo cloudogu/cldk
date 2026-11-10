@@ -46,7 +46,7 @@ type Options struct {
 
 // Result describes what has been pushed.
 type Result struct {
-	// Version is the dev version of this push, e.g. "3.96.4-3-dev.20261103143012".
+	// Version is the dev version of this push, e.g. "1.2.3-dev.20261103143012".
 	Version string
 	// Images are the built and pushed images, ordered by name.
 	Images []PushedImage
@@ -57,7 +57,7 @@ type Result struct {
 	// name.
 	SkippedImages []string
 	// ChartReference is the full reference of the pushed chart without scheme, e.g.
-	// "localhost:5001/official/dogu/v3/charts/nexus:3.96.4-3-dev.20261103143012".
+	// "localhost:5001/official/dogu/v3/charts/nexus:1.2.3-dev.20261103143012".
 	ChartReference string
 	// ChartDigest is the manifest digest of the pushed chart.
 	ChartDigest string

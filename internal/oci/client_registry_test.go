@@ -35,7 +35,7 @@ func TestClientImages(t *testing.T) {
 	client, err := NewClient(target)
 	require.NoError(t, err)
 
-	ref, err := name.NewTag(target.ImageRepository("nexus")+":3.96.4-3", target.NameOptions()...)
+	ref, err := name.NewTag(target.ImageRepository("nexus")+":3.96.4", target.NameOptions()...)
 	require.NoError(t, err)
 
 	_, exists, err := client.ImageExists(context.Background(), ref)
@@ -62,13 +62,13 @@ func TestClientCharts(t *testing.T) {
 	client, err := NewClient(target)
 	require.NoError(t, err)
 
-	ref := target.ChartRepository("nexus") + ":3.96.4-3"
+	ref := target.ChartRepository("nexus") + ":1.2.3"
 
 	_, exists, err := client.ChartExists(context.Background(), ref)
 	require.NoError(t, err)
 	assert.False(t, exists, "chart should not exist before the push")
 
-	c := &helmchart.Chart{Metadata: &helmchart.Metadata{APIVersion: helmchart.APIVersionV2, Name: "nexus", Version: "3.96.4-3"}}
+	c := &helmchart.Chart{Metadata: &helmchart.Metadata{APIVersion: helmchart.APIVersionV2, Name: "nexus", Version: "1.2.3"}}
 	archivePath, err := chartutil.Save(c, t.TempDir())
 	require.NoError(t, err)
 	archive, err := os.ReadFile(archivePath)

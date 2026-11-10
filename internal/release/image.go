@@ -21,7 +21,7 @@ type ReleasedImage struct {
 	// Source is the source reference of the image as given in Options.Images, without an explicit target.
 	Source string
 	// Reference is the full reference of the released image, e.g.
-	// "registry.cloudogu.com/official/dogu/v3/images/nexus:3.96.4-3".
+	// "registry.cloudogu.com/official/dogu/v3/images/nexus:3.96.4".
 	Reference string
 	// Digest is the digest of the released manifest or index, which equals the digest of the source.
 	Digest string
@@ -100,7 +100,7 @@ func parseImage(spec string, target oci.Target) (imageSpec, error) {
 	if hasExplicitTarget {
 		targetName, tag, ok = strings.Cut(explicitTarget, ":")
 		if !ok || targetName == "" || tag == "" || strings.Contains(targetName, "/") {
-			return imageSpec{}, fmt.Errorf("invalid image %s: the target must be given as <name>:<tag>, e.g. %s=nexus:3.96.4-3", spec, source)
+			return imageSpec{}, fmt.Errorf("invalid image %s: the target must be given as <name>:<tag>, e.g. %s=nexus:3.96.4", spec, source)
 		}
 	}
 

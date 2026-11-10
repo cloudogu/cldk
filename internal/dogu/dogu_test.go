@@ -22,7 +22,7 @@ const testNamespace = "ecosystem"
 var devChartNexus = DevChart{
 	Name:      "nexus",
 	Namespace: "official",
-	Version:   "3.96.4-3-dev.20261103143012",
+	Version:   "1.2.3-dev.20261103143012",
 	URL:       "oci://k3d-registry-proxy.localhost:5000/official/dogu/v3/charts/nexus",
 }
 
@@ -91,7 +91,7 @@ func TestObject(t *testing.T) {
 			"spec": map[string]any{
 				"name":           "nexus",
 				"doguNamespace":  "official",
-				"version":        "3.96.4-3-dev.20261103143012",
+				"version":        "1.2.3-dev.20261103143012",
 				"doguApiVersion": "v3",
 			},
 		}, obj.Object)
@@ -112,7 +112,7 @@ func TestYAML(t *testing.T) {
 		got, err := YAML(DevChart{
 			Name:      "nexus",
 			Namespace: "official",
-			Version:   "3.96.4-3-dev.20261103143012",
+			Version:   "1.2.3-dev.20261103143012",
 			URL:       "oci://k3d-registry-proxy.localhost:5000/official/dogu/v3/charts/nexus",
 			Insecure:  true,
 		})
@@ -129,7 +129,7 @@ spec:
   doguApiVersion: v3
   doguNamespace: official
   name: nexus
-  version: 3.96.4-3-dev.20261103143012
+  version: 1.2.3-dev.20261103143012
 `, string(got))
 	})
 }
@@ -157,7 +157,7 @@ func TestClientApply(t *testing.T) {
 			"spec": map[string]any{
 				"name":           "nexus",
 				"doguNamespace":  "official",
-				"version":        "3.96.4-3",
+				"version":        "1.2.3",
 				"doguApiVersion": "v3",
 				"stopped":        true,
 				"values":         map[string]any{"replicas": int64(2)},

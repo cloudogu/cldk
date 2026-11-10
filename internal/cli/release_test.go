@@ -13,15 +13,15 @@ import (
 	"github.com/cloudogu/cldk/internal/release"
 )
 
-// newSuccessfulReleaser returns a releaser mock that plans and releases every chart as nexus 3.96.4-3.
+// newSuccessfulReleaser returns a releaser mock that plans and releases every chart as nexus 1.2.3.
 func newSuccessfulReleaser() *MockReleaser {
 	return &MockReleaser{
 		PlanFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Plan, error) {
-			return release.Plan{ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3"}, nil
+			return release.Plan{ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3"}, nil
 		},
 		ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
 			return release.Result{
-				ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3",
+				ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3",
 				ChartDigest:    "sha256:1234",
 			}, nil
 		},
@@ -42,11 +42,11 @@ func TestReleaseCommand(t *testing.T) {
 		releaser := newSuccessfulReleaser()
 
 		_, _, err := runCldk(t, releaser, "dogu", "release", "--reg", "staging-registry.cloudogu.com", "--namespace", "testing",
-			"--user", "releaser", "--pass", "s3cret", "--plain-http", "--insecure", "nexus-3.96.4-3.tgz")
+			"--user", "releaser", "--pass", "s3cret", "--plain-http", "--insecure", "nexus-1.2.3.tgz")
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
-		assert.Equal(t, "nexus-3.96.4-3.tgz", releaser.ReleaseCalls()[0].ChartPath)
+		assert.Equal(t, "nexus-1.2.3.tgz", releaser.ReleaseCalls()[0].ChartPath)
 		assert.Equal(t, oci.Target{
 			Registry:              "staging-registry.cloudogu.com",
 			Namespace:             "testing",
@@ -61,7 +61,7 @@ func TestReleaseCommand(t *testing.T) {
 		isolateCredentialEnv(t)
 		releaser := newSuccessfulReleaser()
 
-		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
+		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "nexus-1.2.3.tgz")
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
@@ -73,11 +73,11 @@ func TestReleaseCommand(t *testing.T) {
 		releaser := newSuccessfulReleaser()
 
 		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing",
-			"-i", "ci.example.com/nexus:3.96.4-3", "--image", "ci.example.com/postgres:14.18", "nexus-3.96.4-3.tgz")
+			"-i", "ci.example.com/nexus:3.96.4", "--image", "ci.example.com/postgres:14.18", "nexus-1.2.3.tgz")
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
-		assert.Equal(t, release.Options{Images: []string{"ci.example.com/nexus:3.96.4-3", "ci.example.com/postgres:14.18"}},
+		assert.Equal(t, release.Options{Images: []string{"ci.example.com/nexus:3.96.4", "ci.example.com/postgres:14.18"}},
 			releaser.ReleaseCalls()[0].Opts)
 	})
 
@@ -86,13 +86,13 @@ func TestReleaseCommand(t *testing.T) {
 		releaser := newSuccessfulReleaser()
 
 		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing",
-			"-i", "localhost:5001/local-dev/nexus/main:3.96.4-3=nexus:3.96.4-3", "-i", "ci.example.com/sa-producer:0.2.0",
-			"--image-key", "nexus=nexus", "--image-key", "sa-producer=nexusSaManager", "nexus-3.96.4-3.tgz")
+			"-i", "localhost:5001/local-dev/nexus/main:3.96.4=nexus:3.96.4", "-i", "ci.example.com/sa-producer:0.2.0",
+			"--image-key", "nexus=nexus", "--image-key", "sa-producer=nexusSaManager", "nexus-1.2.3.tgz")
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
 		assert.Equal(t, release.Options{
-			Images:    []string{"localhost:5001/local-dev/nexus/main:3.96.4-3=nexus:3.96.4-3", "ci.example.com/sa-producer:0.2.0"},
+			Images:    []string{"localhost:5001/local-dev/nexus/main:3.96.4=nexus:3.96.4", "ci.example.com/sa-producer:0.2.0"},
 			ImageKeys: []string{"nexus=nexus", "sa-producer=nexusSaManager"},
 		}, releaser.ReleaseCalls()[0].Opts)
 	})
@@ -101,7 +101,7 @@ func TestReleaseCommand(t *testing.T) {
 		isolateCredentialEnv(t)
 		releaser := newSuccessfulReleaser()
 
-		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "--force", "nexus-3.96.4-3.tgz")
+		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "--force", "nexus-1.2.3.tgz")
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
@@ -112,12 +112,12 @@ func TestReleaseCommand(t *testing.T) {
 		isolateCredentialEnv(t)
 		releaser := newSuccessfulReleaser()
 
-		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "--dry-run", "--force", "nexus-3.96.4-3.tgz")
+		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "--dry-run", "--force", "nexus-1.2.3.tgz")
 
 		require.NoError(t, err)
 		assert.Empty(t, releaser.ReleaseCalls())
 		require.Len(t, releaser.PlanCalls(), 1)
-		assert.Equal(t, "nexus-3.96.4-3.tgz", releaser.PlanCalls()[0].ChartPath)
+		assert.Equal(t, "nexus-1.2.3.tgz", releaser.PlanCalls()[0].ChartPath)
 		assert.Equal(t, oci.Target{Registry: "registry.cloudogu.com", Namespace: "testing"}, releaser.PlanCalls()[0].Target)
 		assert.Equal(t, release.Options{Force: true}, releaser.PlanCalls()[0].Opts)
 	})
@@ -128,20 +128,20 @@ func TestReleaseCommand(t *testing.T) {
 			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
 				return release.Result{
 					Images: []release.ReleasedImage{
-						{Source: "ci.example.com/nexus:3.96.4-3", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3", Digest: "sha256:abcd", Status: release.StatusOverwritten},
+						{Source: "ci.example.com/nexus:3.96.4", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4", Digest: "sha256:abcd", Status: release.StatusOverwritten},
 					},
-					ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3",
+					ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3",
 					ChartStatus:    release.StatusOverwritten,
 					ChartDigest:    "sha256:1234",
 				}, nil
 			},
 		}
 
-		stdout, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "--force", "nexus-3.96.4-3.tgz")
+		stdout, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "--force", "nexus-1.2.3.tgz")
 
 		require.NoError(t, err)
-		assert.Equal(t, "Released image ci.example.com/nexus:3.96.4-3 -> registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3@sha256:abcd (overwritten)\n"+
-			"Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3@sha256:1234 (overwritten)\n", stdout)
+		assert.Equal(t, "Released image ci.example.com/nexus:3.96.4 -> registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4@sha256:abcd (overwritten)\n"+
+			"Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3@sha256:1234 (overwritten)\n", stdout)
 	})
 
 	t.Run("marks skipped images", func(t *testing.T) {
@@ -150,21 +150,21 @@ func TestReleaseCommand(t *testing.T) {
 			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
 				return release.Result{
 					Images: []release.ReleasedImage{
-						{Source: "ci.example.com/nexus:3.96.4-3", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3", Digest: "sha256:abcd", Status: release.StatusSkipped},
+						{Source: "ci.example.com/nexus:3.96.4", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4", Digest: "sha256:abcd", Status: release.StatusSkipped},
 						{Source: "ci.example.com/postgres:14.18", Reference: "registry.cloudogu.com/testing/dogu/v3/images/postgres:14.18", Digest: "sha256:ef01"},
 					},
-					ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3",
+					ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3",
 					ChartDigest:    "sha256:1234",
 				}, nil
 			},
 		}
 
-		stdout, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
+		stdout, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "nexus-1.2.3.tgz")
 
 		require.NoError(t, err)
-		assert.Equal(t, "Skipped image ci.example.com/nexus:3.96.4-3 -> registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3@sha256:abcd (already released)\n"+
+		assert.Equal(t, "Skipped image ci.example.com/nexus:3.96.4 -> registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4@sha256:abcd (already released)\n"+
 			"Released image ci.example.com/postgres:14.18 -> registry.cloudogu.com/testing/dogu/v3/images/postgres:14.18@sha256:ef01\n"+
-			"Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3@sha256:1234\n", stdout)
+			"Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3@sha256:1234\n", stdout)
 	})
 
 	t.Run("prints each released image before the chart", func(t *testing.T) {
@@ -173,30 +173,30 @@ func TestReleaseCommand(t *testing.T) {
 			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
 				return release.Result{
 					Images: []release.ReleasedImage{
-						{Source: "ci.example.com/nexus:3.96.4-3", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3", Digest: "sha256:abcd"},
+						{Source: "ci.example.com/nexus:3.96.4", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4", Digest: "sha256:abcd"},
 						{Source: "ci.example.com/postgres:14.18", Reference: "registry.cloudogu.com/testing/dogu/v3/images/postgres:14.18", Digest: "sha256:ef01"},
 					},
-					ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3",
+					ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3",
 					ChartDigest:    "sha256:1234",
 				}, nil
 			},
 		}
 
-		stdout, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
+		stdout, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "nexus-1.2.3.tgz")
 
 		require.NoError(t, err)
-		assert.Equal(t, "Released image ci.example.com/nexus:3.96.4-3 -> registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3@sha256:abcd\n"+
+		assert.Equal(t, "Released image ci.example.com/nexus:3.96.4 -> registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4@sha256:abcd\n"+
 			"Released image ci.example.com/postgres:14.18 -> registry.cloudogu.com/testing/dogu/v3/images/postgres:14.18@sha256:ef01\n"+
-			"Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3@sha256:1234\n", stdout)
+			"Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3@sha256:1234\n", stdout)
 	})
 
 	t.Run("prints the released chart with its digest", func(t *testing.T) {
 		isolateCredentialEnv(t)
 
-		stdout, _, err := runCldk(t, newSuccessfulReleaser(), "dogu", "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
+		stdout, _, err := runCldk(t, newSuccessfulReleaser(), "dogu", "release", "--namespace", "testing", "nexus-1.2.3.tgz")
 
 		require.NoError(t, err)
-		assert.Equal(t, "Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3@sha256:1234\n", stdout)
+		assert.Equal(t, "Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3@sha256:1234\n", stdout)
 	})
 
 	t.Run("returns the error of the releaser", func(t *testing.T) {
@@ -207,7 +207,7 @@ func TestReleaseCommand(t *testing.T) {
 			},
 		}
 
-		stdout, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
+		stdout, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "nexus-1.2.3.tgz")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "registry unavailable")
@@ -223,8 +223,8 @@ func TestReleaseCommandValidation(t *testing.T) {
 	}{
 		{"missing chart argument", []string{"dogu", "release", "--namespace", "testing"}, "accepts 1 arg"},
 		{"more than one chart argument", []string{"dogu", "release", "--namespace", "testing", "a.tgz", "b.tgz"}, "accepts 1 arg"},
-		{"missing namespace", []string{"dogu", "release", "nexus-3.96.4-3.tgz"}, `"namespace" not set`},
-		{"empty namespace", []string{"dogu", "release", "--namespace", "", "nexus-3.96.4-3.tgz"}, "--namespace must not be empty"},
+		{"missing namespace", []string{"dogu", "release", "nexus-1.2.3.tgz"}, `"namespace" not set`},
+		{"empty namespace", []string{"dogu", "release", "--namespace", "", "nexus-1.2.3.tgz"}, "--namespace must not be empty"},
 	}
 
 	for _, tt := range tests {
@@ -247,7 +247,7 @@ func TestReleaseCommandCredentials(t *testing.T) {
 		t.Setenv("CLDK_PASSWORD", "s3cret")
 		releaser := newSuccessfulReleaser()
 
-		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
+		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "nexus-1.2.3.tgz")
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
@@ -260,7 +260,7 @@ func TestReleaseCommandCredentials(t *testing.T) {
 		t.Setenv("CLDK_PASSWORD", "wrong")
 		releaser := newSuccessfulReleaser()
 
-		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "--user", "releaser", "--pass", "s3cret", "nexus-3.96.4-3.tgz")
+		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "--user", "releaser", "--pass", "s3cret", "nexus-1.2.3.tgz")
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
@@ -292,7 +292,7 @@ func TestReleaseCommandCredentials(t *testing.T) {
 				releaser := newSuccessfulReleaser()
 				args := append([]string{"dogu", "release", "--namespace", "testing"}, tt.flags...)
 
-				_, _, err := runCldk(t, releaser, append(args, "nexus-3.96.4-3.tgz")...)
+				_, _, err := runCldk(t, releaser, append(args, "nexus-1.2.3.tgz")...)
 
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), "user and password must be given together")
@@ -305,17 +305,17 @@ func TestReleaseCommandCredentials(t *testing.T) {
 // dryRunPlan is the plan of a dry run with an image in each status.
 var dryRunPlan = release.Plan{
 	Images: []release.PlannedImage{
-		{Source: "ci.example.com/nexus:3.96.4-3", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3", Digest: "sha256:abcd"},
+		{Source: "ci.example.com/nexus:3.96.4", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4", Digest: "sha256:abcd"},
 		{Source: "ci.example.com/postgres:14.18", Reference: "registry.cloudogu.com/testing/dogu/v3/images/postgres:14.18", Digest: "sha256:ef01", ExistingDigest: "sha256:ef01", Status: release.StatusSkipped},
 		{Source: "ci.example.com/sa-producer:0.2.0", Reference: "registry.cloudogu.com/testing/dogu/v3/images/sa-producer:0.2.0", Digest: "sha256:2345", ExistingDigest: "sha256:aaaa", Status: release.StatusOverwritten},
 		{Source: "ci.example.com/usermgt:1.20.0-1", Reference: "registry.cloudogu.com/testing/dogu/v3/images/usermgt:1.20.0-1", Digest: "sha256:6789", ExistingDigest: "sha256:bbbb", Status: release.StatusConflict},
 	},
-	ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3",
+	ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3",
 }
 
 // dryRunOutput is the output of dryRunPlan without the chart.
 const dryRunOutput = "Dry run, nothing has been pushed.\n" +
-	"Would push image ci.example.com/nexus:3.96.4-3 -> registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3@sha256:abcd\n" +
+	"Would push image ci.example.com/nexus:3.96.4 -> registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4@sha256:abcd\n" +
 	"Would skip image ci.example.com/postgres:14.18 -> registry.cloudogu.com/testing/dogu/v3/images/postgres:14.18@sha256:ef01 (already released)\n" +
 	"Would overwrite image ci.example.com/sa-producer:0.2.0 -> registry.cloudogu.com/testing/dogu/v3/images/sa-producer:0.2.0@sha256:2345\n" +
 	"Conflict for image ci.example.com/usermgt:1.20.0-1 -> registry.cloudogu.com/testing/dogu/v3/images/usermgt:1.20.0-1@sha256:6789 (exists with another digest)\n"
@@ -335,9 +335,9 @@ func TestReleaseCommandDryRun(t *testing.T) {
 		chartStatus release.Status
 		chartOutput string
 	}{
-		{"new chart", release.StatusPushed, "Would release chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3\n"},
-		{"overwritten chart", release.StatusOverwritten, "Would overwrite chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3\n"},
-		{"conflicting chart", release.StatusConflict, "Conflict for chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3 (already released)\n"},
+		{"new chart", release.StatusPushed, "Would release chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3\n"},
+		{"overwritten chart", release.StatusOverwritten, "Would overwrite chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3\n"},
+		{"conflicting chart", release.StatusConflict, "Conflict for chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3 (already released)\n"},
 	}
 
 	for _, tt := range tests {
@@ -346,7 +346,7 @@ func TestReleaseCommandDryRun(t *testing.T) {
 			plan := dryRunPlan
 			plan.ChartStatus = tt.chartStatus
 
-			stdout, _, _ := runCldk(t, newPlanningReleaser(plan, nil), "dogu", "release", "--namespace", "testing", "--dry-run", "nexus-3.96.4-3.tgz")
+			stdout, _, _ := runCldk(t, newPlanningReleaser(plan, nil), "dogu", "release", "--namespace", "testing", "--dry-run", "nexus-1.2.3.tgz")
 
 			assert.Equal(t, dryRunOutput+tt.chartOutput, stdout)
 		})
@@ -357,12 +357,12 @@ func TestReleaseCommandDryRun(t *testing.T) {
 		plan := dryRunPlan
 		plan.ChartStatus = release.StatusConflict
 
-		stdout, _, err := runCldk(t, newPlanningReleaser(plan, nil), "dogu", "release", "--namespace", "testing", "--dry-run", "nexus-3.96.4-3.tgz")
+		stdout, _, err := runCldk(t, newPlanningReleaser(plan, nil), "dogu", "release", "--namespace", "testing", "--dry-run", "nexus-1.2.3.tgz")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "image registry.cloudogu.com/testing/dogu/v3/images/usermgt:1.20.0-1 already exists with digest sha256:bbbb")
-		assert.Contains(t, err.Error(), "chart registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3 is already released")
-		assert.Equal(t, dryRunOutput+"Conflict for chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3 (already released)\n", stdout)
+		assert.Contains(t, err.Error(), "chart registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3 is already released")
+		assert.Equal(t, dryRunOutput+"Conflict for chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3 (already released)\n", stdout)
 	})
 
 	t.Run("succeeds without conflicts", func(t *testing.T) {
@@ -372,7 +372,7 @@ func TestReleaseCommandDryRun(t *testing.T) {
 			ChartReference: dryRunPlan.ChartReference,
 		}
 
-		_, _, err := runCldk(t, newPlanningReleaser(plan, nil), "dogu", "release", "--namespace", "testing", "--dry-run", "nexus-3.96.4-3.tgz")
+		_, _, err := runCldk(t, newPlanningReleaser(plan, nil), "dogu", "release", "--namespace", "testing", "--dry-run", "nexus-1.2.3.tgz")
 
 		require.NoError(t, err)
 	})
@@ -381,7 +381,7 @@ func TestReleaseCommandDryRun(t *testing.T) {
 		isolateCredentialEnv(t)
 
 		stdout, _, err := runCldk(t, newPlanningReleaser(release.Plan{}, errors.New("registry unavailable")),
-			"dogu", "release", "--namespace", "testing", "--dry-run", "nexus-3.96.4-3.tgz")
+			"dogu", "release", "--namespace", "testing", "--dry-run", "nexus-1.2.3.tgz")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "registry unavailable")

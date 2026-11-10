@@ -14,12 +14,12 @@ All options are described in the [README](../../README.md#dogu-dev-push).
 ## How it works
 
 1. `cldk` loads the `cldk.yaml` and the chart, checks the cluster and lints the rewritten chart.
-2. Each image of the `cldk.yaml` is built and pushed to `<reg>/<namespace>/dogu/v3/images/<name>:<dev version>`.
-3. The chart gets the new image references and is pushed to `oci://<reg>/<namespace>/dogu/v3/charts/<name>:<dev version>`.
-4. The dogu resource gets `spec.version: <dev version>` and the annotation `k8s.cloudogu.com/dev-chart-url` with the URL of the chart.
+2. Each image of the `cldk.yaml` is built and pushed to `<reg>/<namespace>/dogu/v3/images/<name>:<dev-version>`.
+3. The chart gets the new image references and is pushed to `oci://<reg>/<namespace>/dogu/v3/charts/<name>:<dev-version>`.
+4. The dogu resource gets `spec.version: <dev-version>` and the annotation `k8s.cloudogu.com/dev-chart-url` with the URL of the chart.
 5. In dev mode, the dogu operator creates an `OCIRepository` for this URL, and Flux installs the chart.
 
-The dev version is `<version of Chart.yaml>-dev.<UTC yyyymmddhhmmss>`, e.g. `3.96.4-3-dev.20261105131320`.
+The dev version is `<version of Chart.yaml>-dev.<UTC yyyymmddhhmmss>`, e.g. `1.2.3-dev.20261105131320`.
 Each push creates a new version, so that the cluster picks up the new state right away.
 
 ## Prerequisites
@@ -27,7 +27,7 @@ Each push creates a new version, so that the cluster picks up the new state righ
 ### Dogu repository
 
 - The chart of the dogu is part of the repository, by default in `k8s/helm`.
-  The `version` in `Chart.yaml` must be a valid semantic version, e.g. the dogu version `3.96.4-3`.
+  The `version` in `Chart.yaml` must be a valid semantic version, e.g. `1.2.3`.
 - To build images, the chart needs a `mirror-patch-tpl.yaml`, which `cldk` uses to rewrite the image references.
 - The root directory contains a `cldk.yaml`, for Nexus e.g.:
 
@@ -38,7 +38,7 @@ Each push creates a new version, so that the cluster picks up the new state righ
   ```
 
 - The settings of your environment belong in the `.env` of the repository.
-  It is local and never committed; the examples below each show a matching `.env`.
+  It is meant for local settings and is therefore usually not committed; the examples below each show a matching `.env`.
 
 ### Dogu operator in dev mode
 
@@ -60,6 +60,7 @@ spec:
 
 Keep the existing entries of `valuesYamlOverwrite` and add `doguV3DevChartsEnabled: true`.
 
+> [!WARNING]
 > **Caution:** The dev mode is meant for development and test clusters only.
 > With dev mode enabled, anyone who may change dogu resources can bring arbitrary charts into the cluster.
 
@@ -115,8 +116,8 @@ Result:
 
 | What                                        | Reference                                                                              |
 |---------------------------------------------|----------------------------------------------------------------------------------------|
-| Image                                       | `registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3-dev.20261105131320`       |
-| Chart                                       | `oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3-dev.20261105131320` |
+| Image                                       | `registry.cloudogu.com/testing/dogu/v3/images/nexus:1.2.3-dev.20261105131320`          |
+| Chart                                       | `oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3-dev.20261105131320`    |
 | Annotation `k8s.cloudogu.com/dev-chart-url` | `oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus`                             |
 | `spec.doguNamespace`                        | `testing`                                                                              |
 
@@ -133,7 +134,7 @@ spec:
   name: nexus
   doguNamespace: testing
   doguApiVersion: v3
-  version: 3.96.4-3-dev.20261105131320
+  version: 1.2.3-dev.20261105131320
 ```
 
 ### What the cluster needs
@@ -184,9 +185,9 @@ Result:
 
 | What                                             | Reference                                                                                     |
 |--------------------------------------------------|-----------------------------------------------------------------------------------------------|
-| Image (push)                                     | `localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261105131320`                    |
-| Image in the chart                               | `k3d-registry-proxy.localhost:5000/official/dogu/v3/images/nexus:3.96.4-3-dev.20261105131320` |
-| Chart (push)                                     | `oci://localhost:5001/official/dogu/v3/charts/nexus:3.96.4-3-dev.20261105131320`              |
+| Image (push)                                     | `localhost:5001/official/dogu/v3/images/nexus:1.2.3-dev.20261105131320`                       |
+| Image in the chart                               | `k3d-registry-proxy.localhost:5000/official/dogu/v3/images/nexus:1.2.3-dev.20261105131320`    |
+| Chart (push)                                     | `oci://localhost:5001/official/dogu/v3/charts/nexus:1.2.3-dev.20261105131320`                 |
 | Annotation `k8s.cloudogu.com/dev-chart-url`      | `oci://k3d-registry-proxy.localhost:5000/official/dogu/v3/charts/nexus`                       |
 | Annotation `k8s.cloudogu.com/dev-chart-insecure` | `"true"`                                                                                      |
 
@@ -222,7 +223,7 @@ Use `--replace-image` and `--skip-image` to leave out images for one push, e.g. 
 # build nothing, the image reference of values.yaml stays
 cldk dogu dev-push --skip-image nexus
 # build nothing, write an existing image into the chart
-cldk dogu dev-push --replace-image nexus=registry.cloudogu.com/official/nexus:3.96.4-3
+cldk dogu dev-push --replace-image nexus=registry.cloudogu.com/official/nexus:3.96.4
 ```
 
 ## Returning to the regular dogu
@@ -231,7 +232,7 @@ To use a release of the dogu registry again, remove the dev annotations and set 
 
 ```shell
 kubectl -n ecosystem annotate dogu nexus k8s.cloudogu.com/dev-chart-url- k8s.cloudogu.com/dev-chart-insecure-
-kubectl -n ecosystem patch dogu nexus --type merge -p '{"spec":{"version":"3.96.4-3","doguNamespace":"official"}}'
+kubectl -n ecosystem patch dogu nexus --type merge -p '{"spec":{"version":"1.2.2","doguNamespace":"official"}}'
 ```
 
 The operator only reacts to changes of the spec.

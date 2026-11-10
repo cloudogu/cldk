@@ -173,13 +173,19 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 		return devpush.Options{}, err
 	}
 
-	buildArgs := r.stringArray(flagBuildArg)
+	buildArgs, buildArgsErr := r.stringArray(flagBuildArg)
+	replaceImageSpecs, replaceImageErr := r.stringArray(flagReplaceImage)
+	skipImageNames, skipImageErr := r.stringArray(flagSkipImage)
+
+	if err := errors.Join(buildArgsErr, replaceImageErr, skipImageErr); err != nil {
+		return devpush.Options{}, err
+	}
 
 	if err := validateBuildArgs(buildArgs); err != nil {
 		return devpush.Options{}, err
 	}
 
-	replaceImages, skipImages, err := resolveImageSelection(r.stringArray(flagReplaceImage), r.stringArray(flagSkipImage))
+	replaceImages, skipImages, err := resolveImageSelection(replaceImageSpecs, skipImageNames)
 	if err != nil {
 		return devpush.Options{}, err
 	}

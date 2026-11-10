@@ -30,7 +30,7 @@ import (
 // fixedNow is the time of every dev push in the tests, 2026-11-03 14:30:12 UTC given in another time zone.
 var fixedNow = time.Date(2026, 11, 3, 15, 30, 12, 0, time.FixedZone("CET", 60*60))
 
-const wantDevVersion = "3.96.4-3-dev.20261103143012"
+const wantDevVersion = "1.2.3-dev.20261103143012"
 
 // testCluster is the cluster of the mocked dogu client.
 var testCluster = kube.Info{Context: "k3d-dev1", Server: "https://0.0.0.0:6443", Namespace: "ecosystem"}

@@ -19,7 +19,7 @@ type PushedImage struct {
 	// Name is the image name in cldk.yaml, e.g. "nexus".
 	Name string
 	// Reference is the reference the image has been pushed to, e.g.
-	// "localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012".
+	// "localhost:5001/official/dogu/v3/images/nexus:1.2.3-dev.20261103143012".
 	Reference string
 }
 

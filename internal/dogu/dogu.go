@@ -35,7 +35,7 @@ type DevChart struct {
 	Name string
 	// Namespace is the dogu namespace, e.g. "official".
 	Namespace string
-	// Version is the dev version, e.g. "3.96.4-3-dev.20261103143012".
+	// Version is the dev version, e.g. "1.2.3-dev.20261103143012".
 	Version string
 	// URL is the OCI URL of the dev chart without tag as seen from the cluster.
 	URL string

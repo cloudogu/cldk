@@ -16,7 +16,7 @@ import (
 // Options are the settings of a release besides the target.
 type Options struct {
 	// Images are the images to release together with the chart, each given as "<source>" or "<source>=<target name>:<tag>",
-	// e.g. "ci-registry.example.com/nexus:3.96.4-3" or "localhost:5001/local-dev/nexus/main:3.96.4-3=nexus:3.96.4-3".
+	// e.g. "ci-registry.example.com/nexus:3.96.4" or "localhost:5001/local-dev/nexus/main:3.96.4=nexus:3.96.4".
 	// Each image is copied to the image repository of the target with the given name and tag,
 	// by default the last path segment of its source repository and its source tag.
 	Images []string
@@ -49,7 +49,7 @@ type Plan struct {
 	// Images are the planned images in the order of Options.Images.
 	Images []PlannedImage
 	// ChartReference is the full reference of the chart without scheme, e.g.
-	// "registry.cloudogu.com/official/dogu/v3/charts/nexus:3.96.4-3".
+	// "registry.cloudogu.com/official/dogu/v3/charts/nexus:1.2.3".
 	ChartReference string
 	// ChartStatus is the state of the chart in the target. A chart is never skipped.
 	ChartStatus Status
@@ -60,7 +60,7 @@ type PlannedImage struct {
 	// Source is the source reference of the image as given in Options.Images, without an explicit target.
 	Source string
 	// Reference is the full reference of the image in the target, e.g.
-	// "registry.cloudogu.com/official/dogu/v3/images/nexus:3.96.4-3".
+	// "registry.cloudogu.com/official/dogu/v3/images/nexus:3.96.4".
 	Reference string
 	// Digest is the digest of the manifest or index of the source.
 	Digest string
@@ -94,7 +94,7 @@ type Result struct {
 	// Images are the released images in the order of Options.Images.
 	Images []ReleasedImage
 	// ChartReference is the full reference of the released chart without scheme, e.g.
-	// "registry.cloudogu.com/official/dogu/v3/charts/nexus:3.96.4-3".
+	// "registry.cloudogu.com/official/dogu/v3/charts/nexus:1.2.3".
 	ChartReference string
 	// ChartStatus is the state of the chart in the target. A chart is never skipped.
 	ChartStatus Status

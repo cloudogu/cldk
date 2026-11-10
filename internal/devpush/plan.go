@@ -10,7 +10,7 @@ import (
 
 // Plan describes what a dev push would build, push and apply, without doing it.
 type Plan struct {
-	// Version is the dev version of this push, e.g. "3.96.4-3-dev.20261103143012".
+	// Version is the dev version of this push, e.g. "1.2.3-dev.20261103143012".
 	Version string
 	// Images are the images that would be built and pushed, with their push references, ordered by name.
 	Images []PushedImage

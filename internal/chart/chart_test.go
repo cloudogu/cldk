@@ -54,7 +54,7 @@ func TestLoadArchive(t *testing.T) {
 		wantVersion string
 		wantErr     string
 	}{
-		{name: "release version", archive: packed("nexus"), wantName: "nexus", wantVersion: "3.96.4-3"},
+		{name: "release version", archive: packed("nexus"), wantName: "nexus", wantVersion: "1.2.3"},
 		{name: "prerelease version", archive: packed("redmine-prerelease"), wantName: "redmine", wantVersion: "6.1.2-dev.1"},
 		{name: "archive without Chart.yaml", archive: static("without-chart-yaml.tgz"), wantErr: "Chart.yaml file is missing"},
 		{name: "no gzipped tar archive", archive: static("not-a-chart.tgz"), wantErr: "failed to load chart archive"},
@@ -83,14 +83,14 @@ func TestSetVersion(t *testing.T) {
 	c, err := LoadArchive(archive)
 	require.NoError(t, err)
 
-	SetVersion(c, "3.96.4-3-dev.20261104120000")
+	SetVersion(c, "1.2.3-dev.20261104120000")
 
 	packed, err := Pack(c)
 	require.NoError(t, err)
 
 	reloaded, err := LoadArchive(packed)
 	require.NoError(t, err)
-	assert.Equal(t, "3.96.4-3-dev.20261104120000", reloaded.Metadata.Version)
+	assert.Equal(t, "1.2.3-dev.20261104120000", reloaded.Metadata.Version)
 	assert.Equal(t, c.Metadata.AppVersion, reloaded.Metadata.AppVersion, "appVersion should be kept")
 }
 
@@ -100,9 +100,9 @@ func TestValidateImageRef(t *testing.T) {
 		ref     string
 		wantErr string
 	}{
-		{name: "registry with a dot", ref: "registry.cloudogu.com/official/nexus:3.96.4-3"},
-		{name: "registry with a port", ref: "localhost:5001/nexus:3.96.4-3"},
-		{name: "localhost", ref: "localhost/nexus:3.96.4-3"},
+		{name: "registry with a dot", ref: "registry.cloudogu.com/official/nexus:3.96.4"},
+		{name: "registry with a port", ref: "localhost:5001/nexus:3.96.4"},
+		{name: "localhost", ref: "localhost/nexus:3.96.4"},
 		{name: "digest", ref: "registry.cloudogu.com/official/nexus@sha256:" + strings.Repeat("a", 64)},
 		{
 			name:    "without registry",
@@ -157,7 +157,7 @@ func copyChart(t *testing.T, name string, files map[string]string) string {
 
 const chartYAMLWithDependency = `apiVersion: v2
 name: nexus
-version: 3.96.4-3
+version: 1.2.3
 dependencies:
   - name: postgresql
     version: 14.18.0
@@ -172,7 +172,7 @@ func TestLoadDir(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "nexus", c.Metadata.Name)
-		assert.Equal(t, "3.96.4-3", c.Metadata.Version)
+		assert.Equal(t, "1.2.3", c.Metadata.Version)
 		assert.Nil(t, findFile(c.Files, "README.md"), "README.md is ignored by .helmignore")
 		assert.NotNil(t, findFile(c.Files, mirrorPatchTemplateFile))
 	})

@@ -85,7 +85,7 @@ func withMirrorPatchTemplate(content string) func(c *helmchart.Chart) {
 }
 
 func TestRewriteImages(t *testing.T) {
-	const nexusTarget = "registry.example.com/testing/dogu/v3/images/nexus:3.96.4-3"
+	const nexusTarget = "registry.example.com/testing/dogu/v3/images/nexus:3.96.4"
 
 	t.Run("writes the target reference into the image list of the mirror patch template", func(t *testing.T) {
 		_, archive := packChart(t, "nexus")
@@ -112,7 +112,7 @@ func TestRewriteImages(t *testing.T) {
 			"image": map[string]any{
 				"registry":   "registry.example.com",
 				"repository": "testing/dogu/v3/images/nexus",
-				"tag":        "3.96.4-3",
+				"tag":        "3.96.4",
 			},
 			"saManager": map[string]any{
 				"image": map[string]any{
@@ -141,7 +141,7 @@ func TestRewriteImages(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, []Change{
-			{Key: "nexus", Old: "registry.cloudogu.com/official/nexus:3.96.4-3", New: nexusTarget},
+			{Key: "nexus", Old: "registry.cloudogu.com/official/nexus:3.96.4", New: nexusTarget},
 			{Key: "postgresql", Old: "docker.io/library/postgres:14.18", New: postgresTarget},
 		}, changes)
 
@@ -155,7 +155,7 @@ func TestRewriteImages(t *testing.T) {
 		_, changes, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget}, nil)
 
 		require.NoError(t, err)
-		assert.Equal(t, []Change{{Key: "nexus", Old: "registry.cloudogu.com/official/nexus:3.96.4-3", New: nexusTarget}}, changes)
+		assert.Equal(t, []Change{{Key: "nexus", Old: "registry.cloudogu.com/official/nexus:3.96.4", New: nexusTarget}}, changes)
 	})
 
 	t.Run("assigns an image to an explicit key instead of the entry with its name", func(t *testing.T) {
@@ -169,7 +169,7 @@ func TestRewriteImages(t *testing.T) {
 			{Key: "nexusSaManager", Old: "registry.cloudogu.com/k8s/service-account-producer-sidecar:0.1.3", New: saManagerTarget},
 		}, changes)
 		assert.Equal(t, map[string]any{
-			"nexus":          "registry.cloudogu.com/official/nexus:3.96.4-3",
+			"nexus":          "registry.cloudogu.com/official/nexus:3.96.4",
 			"nexusSaManager": saManagerTarget,
 			"postgresql":     "docker.io/library/postgres:14.18",
 		}, chartYAML(t, rewritten, mirrorPatchTemplateFile)["values"].(map[string]any)["images"])
@@ -179,14 +179,14 @@ func TestRewriteImages(t *testing.T) {
 		archive := packChartWith(t, "nexus", withMirrorPatchTemplate(`apiVersion: v1
 values:
   images:
-    nexus: registry.cloudogu.com/official/nexus:3.96.4-3
+    nexus: registry.cloudogu.com/official/nexus:3.96.4
     nexusOld: registry.cloudogu.com/official/nexus:3.70.0-1
 `))
 
 		_, changes, err := rewriteChart(archive, map[string]string{"nexus": nexusTarget}, map[string]string{"nexus": "nexus"})
 
 		require.NoError(t, err)
-		assert.Equal(t, []Change{{Key: "nexus", Old: "registry.cloudogu.com/official/nexus:3.96.4-3", New: nexusTarget}}, changes)
+		assert.Equal(t, []Change{{Key: "nexus", Old: "registry.cloudogu.com/official/nexus:3.96.4", New: nexusTarget}}, changes)
 	})
 
 	t.Run("keeps the patches of the mirror patch template", func(t *testing.T) {
@@ -222,7 +222,7 @@ values:
 			withMirrorPatchTemplate(`apiVersion: v1
 values:
   images:
-    nexus: registry.cloudogu.com/official/nexus:3.96.4-3
+    nexus: registry.cloudogu.com/official/nexus:3.96.4
 patches:
   templates/images.yaml:
     nexus:
@@ -261,15 +261,15 @@ patches:
 				modify: withMirrorPatchTemplate(`apiVersion: v1
 values:
   images:
-    nexus: registry.cloudogu.com/official/nexus:3.96.4-3
+    nexus: registry.cloudogu.com/official/nexus:3.96.4
     nexusOld: registry.cloudogu.com/official/nexus:3.70.0-1
 `),
-				wantErr: `several entries in values.images of mirror-patch-tpl.yaml have the repository name "nexus" of image registry.example.com/testing/dogu/v3/images/nexus:3.96.4-3: nexus, nexusOld; choose one with --image-key nexus=<key>`,
+				wantErr: `several entries in values.images of mirror-patch-tpl.yaml have the repository name "nexus" of image registry.example.com/testing/dogu/v3/images/nexus:3.96.4: nexus, nexusOld; choose one with --image-key nexus=<key>`,
 			},
 			{
 				name:    "if an explicit key is no entry of values.images",
 				keys:    map[string]string{"nexus": "unknown"},
-				wantErr: `values.images of mirror-patch-tpl.yaml has no entry "unknown" for image registry.example.com/testing/dogu/v3/images/nexus:3.96.4-3`,
+				wantErr: `values.images of mirror-patch-tpl.yaml has no entry "unknown" for image registry.example.com/testing/dogu/v3/images/nexus:3.96.4`,
 			},
 			{
 				name: "if two images are assigned to the same entry of values.images",
@@ -278,7 +278,7 @@ values:
 					"sidecar": "registry.example.com/testing/dogu/v3/images/sidecar:0.2.0",
 				},
 				keys:    map[string]string{"sidecar": "nexus"},
-				wantErr: `images registry.example.com/testing/dogu/v3/images/nexus:3.96.4-3 and registry.example.com/testing/dogu/v3/images/sidecar:0.2.0 are both assigned to values.images.nexus`,
+				wantErr: `images registry.example.com/testing/dogu/v3/images/nexus:3.96.4 and registry.example.com/testing/dogu/v3/images/sidecar:0.2.0 are both assigned to values.images.nexus`,
 			},
 			{
 				name:    "without values.images",
@@ -287,7 +287,7 @@ values:
 			},
 			{
 				name:    "with an unsupported apiVersion",
-				modify:  withMirrorPatchTemplate("apiVersion: v2\nvalues:\n  images:\n    nexus: registry.cloudogu.com/official/nexus:3.96.4-3\n"),
+				modify:  withMirrorPatchTemplate("apiVersion: v2\nvalues:\n  images:\n    nexus: registry.cloudogu.com/official/nexus:3.96.4\n"),
 				wantErr: `unsupported apiVersion "v2" in mirror-patch-tpl.yaml`,
 			},
 			{
@@ -295,7 +295,7 @@ values:
 				modify: withMirrorPatchTemplate(`apiVersion: v1
 values:
   images:
-    nexus: registry.cloudogu.com/official/nexus:3.96.4-3
+    nexus: registry.cloudogu.com/official/nexus:3.96.4
 patches:
   values.yaml:
     image: "{{ registryFrom .images.unknown }}"
@@ -307,7 +307,7 @@ patches:
 				modify: withMirrorPatchTemplate(`apiVersion: v1
 values:
   images:
-    nexus: registry.cloudogu.com/official/nexus:3.96.4-3
+    nexus: registry.cloudogu.com/official/nexus:3.96.4
 patches:
   templates/missing.yaml:
     image: "{{ .images.nexus }}"

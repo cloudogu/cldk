@@ -70,12 +70,17 @@ func (r optionResolver) boolean(flag, env string) (bool, error) {
 }
 
 // stringArray returns the values of a repeatable flag without environment variable, nil if it is not given.
-func (r optionResolver) stringArray(flag string) []string {
-	values := r.cmd.Flags().Lookup(flag).Value.(pflag.SliceValue).GetSlice()
-
-	if len(values) == 0 {
-		return nil
+func (r optionResolver) stringArray(flag string) ([]string, error) {
+	sliceValue, ok := r.cmd.Flags().Lookup(flag).Value.(pflag.SliceValue)
+	if !ok {
+		return nil, fmt.Errorf("flag --%s is not repeatable", flag)
 	}
 
-	return values
+	values := sliceValue.GetSlice()
+
+	if len(values) == 0 {
+		return nil, nil
+	}
+
+	return values, nil
 }

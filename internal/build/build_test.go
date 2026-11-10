@@ -127,7 +127,7 @@ func TestBuilder_Build(t *testing.T) {
 		err := b.Build(context.Background(), BuildRequest{
 			Context:    "/project/app",
 			Dockerfile: "/project/app/Dockerfile.nexus",
-			Tag:        "localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012",
+			Tag:        "localhost:5001/official/dogu/v3/images/nexus:1.2.3-dev.20261103143012",
 			Target:     "runtime",
 			BuildArgs:  []string{"FOO=bar", "HTTP_PROXY"},
 			Platform:   "linux/arm64",
@@ -137,7 +137,7 @@ func TestBuilder_Build(t *testing.T) {
 		assert.Equal(t, []string{
 			"build",
 			"-f", "/project/app/Dockerfile.nexus",
-			"-t", "localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012",
+			"-t", "localhost:5001/official/dogu/v3/images/nexus:1.2.3-dev.20261103143012",
 			"--target", "runtime",
 			"--build-arg", "FOO=bar",
 			"--build-arg", "HTTP_PROXY",

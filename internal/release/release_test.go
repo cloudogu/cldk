@@ -29,7 +29,7 @@ import (
 	helmregistry "helm.sh/helm/v4/pkg/registry"
 )
 
-const chartReference = "/testing/dogu/v3/charts/nexus:3.96.4-3"
+const chartReference = "/testing/dogu/v3/charts/nexus:1.2.3"
 
 // newRegistryHandler returns an in-memory OCI registry that does not log.
 func newRegistryHandler() http.Handler {
@@ -142,12 +142,12 @@ func TestReleaseChart(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, chartContent, pulled.Chart.Data)
 		assert.Equal(t, "nexus", pulled.Chart.Meta.Name)
-		assert.Equal(t, "3.96.4-3", pulled.Chart.Meta.Version)
+		assert.Equal(t, "1.2.3", pulled.Chart.Meta.Version)
 
 		loaded, err := loader.LoadArchive(bytes.NewReader(pulled.Chart.Data))
 		require.NoError(t, err)
 		assert.Equal(t, "nexus", loaded.Metadata.Name)
-		assert.Equal(t, "3.96.4-3", loaded.Metadata.Version)
+		assert.Equal(t, "1.2.3", loaded.Metadata.Version)
 	})
 
 	t.Run("returns the reference and digest of the released chart", func(t *testing.T) {
@@ -348,12 +348,12 @@ func TestReleaseImages(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
-		source, digest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		source, digest := newSourceImage(t, src, "ci/nexus:3.96.4")
 
 		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{source}})
 
 		require.NoError(t, err)
-		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3"))
+		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4"))
 	})
 
 	t.Run("copies an index unchanged", func(t *testing.T) {
@@ -362,7 +362,7 @@ func TestReleaseImages(t *testing.T) {
 		chartPath, _ := packChart(t, "nexus")
 		idx, err := random.Index(256, 1, 2)
 		require.NoError(t, err)
-		source := src + "/ci/nexus:3.96.4-3"
+		source := src + "/ci/nexus:3.96.4"
 		sourceRef, err := name.ParseReference(source)
 		require.NoError(t, err)
 		require.NoError(t, remote.WriteIndex(sourceRef, idx))
@@ -372,39 +372,39 @@ func TestReleaseImages(t *testing.T) {
 		_, err = NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{source}})
 
 		require.NoError(t, err)
-		assert.Equal(t, digest.String(), imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3"))
+		assert.Equal(t, digest.String(), imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4"))
 	})
 
 	t.Run("names the target after the last path segment of the source and keeps the tag", func(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
-		source, digest := newSourceImage(t, src, "ci/staging/nexus:3.96.4-3-rc1")
+		source, digest := newSourceImage(t, src, "ci/staging/nexus:3.96.4-rc1")
 
 		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{source}})
 
 		require.NoError(t, err)
-		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3-rc1"))
+		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-rc1"))
 	})
 
 	t.Run("releases the image with an explicit target name and tag", func(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
-		source, digest := newSourceImage(t, src, "local-dev/nexus/main:3.96.4-3-build.7")
+		source, digest := newSourceImage(t, src, "local-dev/nexus/main:3.96.4-build.7")
 
 		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
-			Options{Images: []string{source + "=nexus:3.96.4-3"}})
+			Options{Images: []string{source + "=nexus:3.96.4"}})
 
 		require.NoError(t, err)
-		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3"))
+		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4"))
 		assert.Equal(t, []ReleasedImage{
-			{Source: source, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: digest},
+			{Source: source, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4", Digest: digest},
 		}, result.Images)
 
 		pulled := pullReleasedChart(t, reg)
 		images := chartYAML(t, pulled, mirrorPatchTemplateFile)["values"].(map[string]any)["images"]
-		assert.Equal(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3", images.(map[string]any)["nexus"])
+		assert.Equal(t, reg+"/testing/dogu/v3/images/nexus:3.96.4", images.(map[string]any)["nexus"])
 	})
 
 	t.Run("assigns an image to the entry of values.images with the explicit key", func(t *testing.T) {
@@ -423,7 +423,7 @@ func TestReleaseImages(t *testing.T) {
 		pulled := pullReleasedChart(t, reg)
 		images := chartYAML(t, pulled, mirrorPatchTemplateFile)["values"].(map[string]any)["images"]
 		assert.Equal(t, map[string]any{
-			"nexus":          "registry.cloudogu.com/official/nexus:3.96.4-3",
+			"nexus":          "registry.cloudogu.com/official/nexus:3.96.4",
 			"nexusSaManager": reg + "/testing/dogu/v3/images/sa-producer:0.2.0",
 			"postgresql":     "docker.io/library/postgres:14.18",
 		}, images)
@@ -433,7 +433,7 @@ func TestReleaseImages(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
-		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4")
 		postgres, _ := newSourceImage(t, src, "ci/postgres:14.18")
 
 		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus, postgres}})
@@ -443,7 +443,7 @@ func TestReleaseImages(t *testing.T) {
 		pulled := pullReleasedChart(t, reg)
 		images := chartYAML(t, pulled, mirrorPatchTemplateFile)["values"].(map[string]any)["images"]
 		assert.Equal(t, map[string]any{
-			"nexus":          reg + "/testing/dogu/v3/images/nexus:3.96.4-3",
+			"nexus":          reg + "/testing/dogu/v3/images/nexus:3.96.4",
 			"nexusSaManager": "registry.cloudogu.com/k8s/service-account-producer-sidecar:0.1.3",
 			"postgresql":     reg + "/testing/dogu/v3/images/postgres:14.18",
 		}, images)
@@ -452,7 +452,7 @@ func TestReleaseImages(t *testing.T) {
 		assert.Equal(t, map[string]any{
 			"registry":   reg,
 			"repository": "testing/dogu/v3/images/nexus",
-			"tag":        "3.96.4-3",
+			"tag":        "3.96.4",
 		}, values["nexus"].(map[string]any)["image"])
 		assert.Equal(t, map[string]any{
 			"registry":   "registry.cloudogu.com",
@@ -465,14 +465,14 @@ func TestReleaseImages(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
-		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4")
 		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
 
 		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus, postgres}})
 
 		require.NoError(t, err)
 		assert.Equal(t, []ReleasedImage{
-			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest},
+			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4", Digest: nexusDigest},
 			{Source: postgres, Reference: reg + "/testing/dogu/v3/images/postgres:14.18", Digest: postgresDigest},
 		}, result.Images)
 		assert.Equal(t, reg+chartReference, result.ChartReference)
@@ -487,7 +487,7 @@ func TestReleaseImages(t *testing.T) {
 		config := `{"auths":{"` + src + `":{"auth":"` + auth + `"}}}`
 		require.NoError(t, os.WriteFile(filepath.Join(dockerConfig, "config.json"), []byte(config), 0o600))
 		chartPath, _ := packChart(t, "nexus")
-		source, digest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		source, digest := newSourceImage(t, src, "ci/nexus:3.96.4")
 		target := testTarget(reg)
 		target.User = "releaser"
 		target.Password = "s3cret"
@@ -497,7 +497,7 @@ func TestReleaseImages(t *testing.T) {
 		require.NoError(t, err)
 
 		targetAuth := remote.WithAuth(&authn.Basic{Username: "releaser", Password: "s3cret"})
-		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3", targetAuth))
+		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4", targetAuth))
 	})
 
 	t.Run("does not release the chart if pushing an image fails", func(t *testing.T) {
@@ -515,7 +515,7 @@ func TestReleaseImages(t *testing.T) {
 		t.Cleanup(srv.Close)
 		reg := strings.TrimPrefix(srv.URL, "http://")
 		chartPath, _ := packChart(t, "nexus")
-		source, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		source, _ := newSourceImage(t, src, "ci/nexus:3.96.4")
 
 		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{source}})
 
@@ -557,7 +557,7 @@ func TestReleaseImagesInsecureSkipTLSVerifyOnlyForTarget(t *testing.T) {
 	src := strings.TrimPrefix(srv.URL, "https://")
 	img, err := random.Image(256, 1)
 	require.NoError(t, err)
-	source := src + "/ci/nexus:3.96.4-3"
+	source := src + "/ci/nexus:3.96.4"
 	sourceRef, err := name.ParseReference(source)
 	require.NoError(t, err)
 	require.NoError(t, remote.Write(sourceRef, img, remote.WithTransport(srv.Client().Transport)))
@@ -577,18 +577,18 @@ func TestReleaseImagesInsecureSkipTLSVerifyOnlyForTarget(t *testing.T) {
 
 func TestReleaseImagesAmbiguousEntry(t *testing.T) {
 	src := newTargetRegistry(t)
-	nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+	nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4")
 	archive := packChartWith(t, "nexus", withMirrorPatchTemplate(`apiVersion: v1
 values:
   images:
-    nexus: registry.cloudogu.com/official/nexus:3.96.4-3
+    nexus: registry.cloudogu.com/official/nexus:3.96.4
     nexusOld: registry.cloudogu.com/official/nexus:3.70.0-1
 patches:
   values.yaml:
     nexus:
       image: "{{ .images.nexus }}"
 `))
-	chartPath := filepath.Join(t.TempDir(), "nexus-3.96.4-3.tgz")
+	chartPath := filepath.Join(t.TempDir(), "nexus-1.2.3.tgz")
 	require.NoError(t, os.WriteFile(chartPath, archive, 0o600))
 
 	t.Run("fails before pushing with a hint to --image-key", func(t *testing.T) {
@@ -612,7 +612,7 @@ patches:
 
 		images := chartYAML(t, pullReleasedChart(t, reg), mirrorPatchTemplateFile)["values"].(map[string]any)["images"]
 		assert.Equal(t, map[string]any{
-			"nexus":    reg + "/testing/dogu/v3/images/nexus:3.96.4-3",
+			"nexus":    reg + "/testing/dogu/v3/images/nexus:3.96.4",
 			"nexusOld": "registry.cloudogu.com/official/nexus:3.70.0-1",
 		}, images)
 	})
@@ -620,9 +620,9 @@ patches:
 
 func TestReleaseImagesFailsBeforePushing(t *testing.T) {
 	src := newTargetRegistry(t)
-	nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+	nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4")
 	usermgt, _ := newSourceImage(t, src, "ci/usermgt:1.20.0-1")
-	otherNexus, _ := newSourceImage(t, src, "other/nexus:3.96.4-3")
+	otherNexus, _ := newSourceImage(t, src, "other/nexus:3.96.4")
 	redmine, _ := newSourceImage(t, src, "ci/redmine:6.1.2-dev.1")
 	nexusDigest := imageDigest(t, nexus)
 
@@ -696,7 +696,7 @@ func TestReleaseImagesFailsBeforePushing(t *testing.T) {
 		{
 			name:    "if an explicit target has an empty name",
 			chart:   "nexus",
-			images:  []string{nexus + "=:3.96.4-3"},
+			images:  []string{nexus + "=:3.96.4"},
 			wantErr: "the target must be given as <name>:<tag>",
 		},
 		{
@@ -708,14 +708,14 @@ func TestReleaseImagesFailsBeforePushing(t *testing.T) {
 		{
 			name:    "if an explicit target name has a path",
 			chart:   "nexus",
-			images:  []string{nexus + "=official/nexus:3.96.4-3"},
+			images:  []string{nexus + "=official/nexus:3.96.4"},
 			wantErr: "the target must be given as <name>:<tag>",
 		},
 		{
 			name:    "if an explicit target is invalid",
 			chart:   "nexus",
-			images:  []string{nexus + "=Nexus:3.96.4-3"},
-			wantErr: "invalid target Nexus:3.96.4-3 for image " + nexus,
+			images:  []string{nexus + "=Nexus:3.96.4"},
+			wantErr: "invalid target Nexus:3.96.4 for image " + nexus,
 		},
 		{
 			name:      "if an image key is given without images",
@@ -804,15 +804,15 @@ func TestReleaseExistingImages(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
-		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4")
 		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
-		copyImage(t, nexus, reg+"/testing/dogu/v3/images/nexus:3.96.4-3")
+		copyImage(t, nexus, reg+"/testing/dogu/v3/images/nexus:3.96.4")
 
 		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus, postgres}})
 
 		require.NoError(t, err)
 		assert.Equal(t, []ReleasedImage{
-			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest, Status: StatusSkipped},
+			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4", Digest: nexusDigest, Status: StatusSkipped},
 			{Source: postgres, Reference: reg + "/testing/dogu/v3/images/postgres:14.18", Digest: postgresDigest},
 		}, result.Images)
 		assert.Equal(t, postgresDigest, imageDigest(t, reg+"/testing/dogu/v3/images/postgres:14.18"))
@@ -823,7 +823,7 @@ func TestReleaseExistingImages(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
-		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4")
 		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
 		otherDigest := pushImage(t, reg+"/testing/dogu/v3/images/postgres:14.18")
 
@@ -833,7 +833,7 @@ func TestReleaseExistingImages(t *testing.T) {
 		assert.Contains(t, err.Error(), "image "+reg+"/testing/dogu/v3/images/postgres:14.18 already exists with digest "+
 			otherDigest+" instead of "+postgresDigest)
 		assert.Contains(t, err.Error(), "--force")
-		assertNotInRegistry(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3")
+		assertNotInRegistry(t, reg+"/testing/dogu/v3/images/nexus:3.96.4")
 		assertNotInRegistry(t, reg+chartReference)
 		assert.Equal(t, otherDigest, imageDigest(t, reg+"/testing/dogu/v3/images/postgres:14.18"))
 	})
@@ -842,16 +842,16 @@ func TestReleaseExistingImages(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
-		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
-		pushImage(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3")
+		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4")
+		pushImage(t, reg+"/testing/dogu/v3/images/nexus:3.96.4")
 
 		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
 			Options{Images: []string{nexus}, Force: true})
 
 		require.NoError(t, err)
-		assert.Equal(t, nexusDigest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3"))
+		assert.Equal(t, nexusDigest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4"))
 		assert.Equal(t, []ReleasedImage{
-			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest, Status: StatusOverwritten},
+			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4", Digest: nexusDigest, Status: StatusOverwritten},
 		}, result.Images)
 	})
 
@@ -873,13 +873,13 @@ func TestReleaseExistingImages(t *testing.T) {
 		t.Cleanup(srv.Close)
 		reg := strings.TrimPrefix(srv.URL, "http://")
 		chartPath, _ := packChart(t, "nexus")
-		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4")
 		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
 		opts := Options{Images: []string{nexus, postgres}}
 
 		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), opts)
 		require.Error(t, err)
-		assert.Equal(t, nexusDigest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3"))
+		assert.Equal(t, nexusDigest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4"))
 		assertNotInRegistry(t, reg+chartReference)
 
 		failPostgres.Store(false)
@@ -911,7 +911,7 @@ func TestReleaseExistingChart(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
-		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4")
 		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
 		require.NoError(t, err)
 
@@ -919,14 +919,14 @@ func TestReleaseExistingChart(t *testing.T) {
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "is already released")
-		assertNotInRegistry(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3")
+		assertNotInRegistry(t, reg+"/testing/dogu/v3/images/nexus:3.96.4")
 	})
 
 	t.Run("Force overwrites the released chart version", func(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
-		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4")
 		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
 		require.NoError(t, err)
 
@@ -938,7 +938,7 @@ func TestReleaseExistingChart(t *testing.T) {
 		assert.Equal(t, imageDigest(t, reg+chartReference), result.ChartDigest)
 
 		images := chartYAML(t, pullReleasedChart(t, reg), mirrorPatchTemplateFile)["values"].(map[string]any)["images"]
-		assert.Equal(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3", images.(map[string]any)["nexus"])
+		assert.Equal(t, reg+"/testing/dogu/v3/images/nexus:3.96.4", images.(map[string]any)["nexus"])
 	})
 }
 
@@ -962,7 +962,7 @@ func TestPlan(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
-		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4")
 		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
 
 		plan, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg),
@@ -972,7 +972,7 @@ func TestPlan(t *testing.T) {
 		assertRegistryEmpty(t, reg)
 		assert.Equal(t, Plan{
 			Images: []PlannedImage{
-				{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest},
+				{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4", Digest: nexusDigest},
 				{Source: postgres, Reference: reg + "/testing/dogu/v3/images/postgres:14.18", Digest: postgresDigest},
 			},
 			ChartReference: reg + chartReference,
@@ -1006,12 +1006,12 @@ func TestPlan(t *testing.T) {
 		t.Cleanup(srv.Close)
 		reg := strings.TrimPrefix(srv.URL, "http://")
 		chartPath, _ := packChart(t, "nexus")
-		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4")
 
 		plan, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus}})
 
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to check image "+reg+"/testing/dogu/v3/images/nexus:3.96.4-3")
+		assert.Contains(t, err.Error(), "failed to check image "+reg+"/testing/dogu/v3/images/nexus:3.96.4")
 		assert.Equal(t, Plan{}, plan)
 	})
 
@@ -1019,9 +1019,9 @@ func TestPlan(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
-		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4-3")
+		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4")
 		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
-		copyImage(t, nexus, reg+"/testing/dogu/v3/images/nexus:3.96.4-3")
+		copyImage(t, nexus, reg+"/testing/dogu/v3/images/nexus:3.96.4")
 		otherDigest := pushImage(t, reg+"/testing/dogu/v3/images/postgres:14.18")
 
 		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
@@ -1033,7 +1033,7 @@ func TestPlan(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, []PlannedImage{
-			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4-3", Digest: nexusDigest, ExistingDigest: nexusDigest, Status: StatusSkipped},
+			{Source: nexus, Reference: reg + "/testing/dogu/v3/images/nexus:3.96.4", Digest: nexusDigest, ExistingDigest: nexusDigest, Status: StatusSkipped},
 			{Source: postgres, Reference: reg + "/testing/dogu/v3/images/postgres:14.18", Digest: postgresDigest, ExistingDigest: otherDigest, Status: StatusConflict},
 		}, plan.Images)
 		assert.Equal(t, StatusConflict, plan.ChartStatus)
@@ -1049,8 +1049,8 @@ func TestPlan(t *testing.T) {
 		src := newTargetRegistry(t)
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
-		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4-3")
-		otherDigest := pushImage(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3")
+		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4")
+		otherDigest := pushImage(t, reg+"/testing/dogu/v3/images/nexus:3.96.4")
 
 		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
 		require.NoError(t, err)
@@ -1064,7 +1064,7 @@ func TestPlan(t *testing.T) {
 		assert.Equal(t, StatusOverwritten, plan.Images[0].Status)
 		assert.Equal(t, StatusOverwritten, plan.ChartStatus)
 		assert.NoError(t, plan.Conflicts())
-		assert.Equal(t, otherDigest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-3"))
+		assert.Equal(t, otherDigest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4"))
 		assert.Equal(t, chartDigest, imageDigest(t, reg+chartReference))
 	})
 

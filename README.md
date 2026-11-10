@@ -20,7 +20,7 @@ See [Releasing a dogu with `cldk dogu release`](docs/operations/releasing_a_dogu
 
 - `cldk dogu release` pushes the chart to `oci://<reg>/<ns>/dogu/v3/charts/<name>:<version>`, name and version are read from `Chart.yaml`. 
 - Each image given with `-i` is copied unchanged (same digest) from its registry to `<reg>/<ns>/dogu/v3/images/<name>:<tag>`, named after the last path segment of the source and keeping its tag.
-  - Use `-i <image>=<name>:<tag>` to set name and tag explicitly, e.g. `-i localhost:5001/local-dev/nexus/main:3.96.4-3=nexus:3.96.4-3`.
+  - Use `-i <image>=<name>:<tag>` to set name and tag explicitly, e.g. `-i localhost:5001/local-dev/nexus/main:3.96.4=nexus:3.96.4`.
   - The images are read with the stored credentials of `docker login`.
   - Each image must be given with its registry, e.g. `docker.io/library/postgres:14.18` instead of `postgres:14.18`, so that nothing is pulled from docker.io by accident.
   - Images are only read from registries, never from the local docker daemon.
@@ -64,9 +64,9 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
   All paths are relative to the project directory; `nexus: {}` is a valid image entry with all defaults.
 
   Unknown fields in `cldk.yaml` abort the command, so that typos are not silently ignored.
-- Each run creates a new dev version `<version>-dev.<UTC yyyymmddhhmmss>` from the `version` of `Chart.yaml`, e.g. `3.96.4-3-dev.20261103143012`.
+- Each run creates a new dev version `<version>-dev.<UTC yyyymmddhhmmss>` from the `version` of `Chart.yaml`, e.g. `1.2.3-dev.20261103143012`.
   - The version in `Chart.yaml` must be a valid semantic version without build metadata (`+…`).
-  - The chart is pushed to `oci://<reg>/<namespace>/dogu/v3/charts/<name>:<dev version>`, the same layout as `release`.
+  - The chart is pushed to `oci://<reg>/<namespace>/dogu/v3/charts/<name>:<dev-version>`, the same layout as `release`.
 - The chart is loaded from its directory like `helm package` does, including `.helmignore`.
   - If `Chart.yaml` declares dependencies, they must be in `charts/`; run `helm dependency build <chart dir>` first.
   - The chart is checked with `helm lint` (including `values.schema.json`) before anything is built or pushed; errors abort, warnings are logged.
@@ -101,15 +101,15 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
 #### Building images
 
 - `dev-push` builds the images of `cldk.yaml` one after another, ordered by name, and pushes each right after its build:
-  - `<builder> build -f <dockerfile> -t <reg>/<namespace>/dogu/v3/images/<name>:<dev version> [--target …] [--build-arg …] [--platform …] <context>`
-  - `<builder> push <reg>/<namespace>/dogu/v3/images/<name>:<dev version>`
+  - `<builder> build -f <dockerfile> -t <reg>/<namespace>/dogu/v3/images/<name>:<dev-version> [--target …] [--build-arg …] [--platform …] <context>`
+  - `<builder> push <reg>/<namespace>/dogu/v3/images/<name>:<dev-version>`
 - The builder is any CLI with Docker compatible `build` and `push` commands, e.g. `docker` or `podman`.
   - It must be on the `PATH` if at least one image is built.
   - It inherits the environment of `cldk`, its output goes to stderr; the built images stay in its local store.
   - The builder must trust the dev registry and be logged in to it if needed, e.g. as insecure registry for a registry without TLS; `--plain-http` and `--insecure` only apply to the chart push of `cldk`.
 - `--platform` takes exactly one platform; without it, the builder chooses.
 - `--build-arg KEY=VALUE` applies to all images and overrides `buildArgs` of the same key; `--build-arg KEY` takes the value from the environment like `docker build`.
-- A copy of the chart gets the references of the built images on the cluster address of the dev registry, e.g. `k3d-registry-proxy.localhost:5000/official/dogu/v3/images/nexus:<dev version>`.
+- A copy of the chart gets the references of the built images on the cluster address of the dev registry, e.g. `k3d-registry-proxy.localhost:5000/official/dogu/v3/images/nexus:<dev-version>`.
   - `dev-push` renders `mirror-patch-tpl.yaml` with the new references and merges the patches into the chart.
   - The chart is rewritten and linted before the first build.
 - The first failed build or push aborts with the image name and the exit code of the builder; images pushed before stay in the dev registry.

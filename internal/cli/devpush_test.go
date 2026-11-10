@@ -14,14 +14,14 @@ import (
 	"github.com/cloudogu/cldk/internal/kube"
 )
 
-const devPushChartRef = "localhost:5001/official/dogu/v3/charts/nexus:3.96.4-3-dev.20261103143012"
+const devPushChartRef = "localhost:5001/official/dogu/v3/charts/nexus:1.2.3-dev.20261103143012"
 
-// newSuccessfulDevPusher returns a dev pusher mock that pushes every chart as nexus 3.96.4-3-dev.20261103143012.
+// newSuccessfulDevPusher returns a dev pusher mock that pushes every chart as nexus 1.2.3-dev.20261103143012.
 func newSuccessfulDevPusher() *MockDevPusher {
 	return &MockDevPusher{
 		PushFunc: func(_ context.Context, _ devpush.Options) (devpush.Result, error) {
 			return devpush.Result{
-				Version:        "3.96.4-3-dev.20261103143012",
+				Version:        "1.2.3-dev.20261103143012",
 				ChartReference: devPushChartRef,
 				ChartDigest:    "sha256:1234",
 				Dogu:           "nexus",
@@ -30,9 +30,9 @@ func newSuccessfulDevPusher() *MockDevPusher {
 		},
 		PlanFunc: func(_ context.Context, _ devpush.Options) (devpush.Plan, error) {
 			return devpush.Plan{
-				Version: "3.96.4-3-dev.20261103143012",
+				Version: "1.2.3-dev.20261103143012",
 				Images: []devpush.PushedImage{
-					{Name: "nexus", Reference: "localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012"},
+					{Name: "nexus", Reference: "localhost:5001/official/dogu/v3/images/nexus:1.2.3-dev.20261103143012"},
 				},
 				ReplacedImages: []devpush.ReplacedImage{{Name: "sidecar", Reference: "registry.example.com/foo:1.0"}},
 				SkippedImages:  []string{"postgres"},
@@ -40,7 +40,7 @@ func newSuccessfulDevPusher() *MockDevPusher {
 				DevChart: dogu.DevChart{
 					Name:      "nexus",
 					Namespace: "official",
-					Version:   "3.96.4-3-dev.20261103143012",
+					Version:   "1.2.3-dev.20261103143012",
 					URL:       "oci://k3d-registry-proxy.localhost:5000/official/dogu/v3/charts/nexus",
 				},
 				Cluster: kube.Info{Context: "k3d-dev1", Server: "https://0.0.0.0:6443", Namespace: "ecosystem"},
@@ -209,8 +209,8 @@ func TestDevPushCommand(t *testing.T) {
 		pusher.PushFunc = func(ctx context.Context, opts devpush.Options) (devpush.Result, error) {
 			result, err := successful(ctx, opts)
 			result.Images = []devpush.PushedImage{
-				{Name: "nexus", Reference: "localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012"},
-				{Name: "sidecar", Reference: "localhost:5001/official/dogu/v3/images/sidecar:3.96.4-3-dev.20261103143012"},
+				{Name: "nexus", Reference: "localhost:5001/official/dogu/v3/images/nexus:1.2.3-dev.20261103143012"},
+				{Name: "sidecar", Reference: "localhost:5001/official/dogu/v3/images/sidecar:1.2.3-dev.20261103143012"},
 			}
 
 			return result, err
@@ -220,8 +220,8 @@ func TestDevPushCommand(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.True(t, strings.HasPrefix(stdout,
-			"Pushed image  localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012\n"+
-				"Pushed image  localhost:5001/official/dogu/v3/images/sidecar:3.96.4-3-dev.20261103143012\n"+
+			"Pushed image  localhost:5001/official/dogu/v3/images/nexus:1.2.3-dev.20261103143012\n"+
+				"Pushed image  localhost:5001/official/dogu/v3/images/sidecar:1.2.3-dev.20261103143012\n"+
 				"Pushed chart  oci://"+devPushChartRef+"\n"), stdout)
 	})
 
@@ -232,7 +232,7 @@ func TestDevPushCommand(t *testing.T) {
 		pusher.PushFunc = func(ctx context.Context, opts devpush.Options) (devpush.Result, error) {
 			result, err := successful(ctx, opts)
 			result.Images = []devpush.PushedImage{
-				{Name: "nexus", Reference: "localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012"},
+				{Name: "nexus", Reference: "localhost:5001/official/dogu/v3/images/nexus:1.2.3-dev.20261103143012"},
 			}
 			result.ReplacedImages = []devpush.ReplacedImage{{Name: "sidecar", Reference: "registry.example.com/foo:1.0"}}
 			result.SkippedImages = []string{"postgres"}
@@ -244,7 +244,7 @@ func TestDevPushCommand(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.True(t, strings.HasPrefix(stdout,
-			"Pushed image  localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012\n"+
+			"Pushed image  localhost:5001/official/dogu/v3/images/nexus:1.2.3-dev.20261103143012\n"+
 				"Replaced image sidecar -> registry.example.com/foo:1.0\n"+
 				"Skipped image postgres\n"+
 				"Pushed chart  oci://"+devPushChartRef+"\n"), stdout)
@@ -257,7 +257,7 @@ func TestDevPushCommand(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "Pushed chart  oci://"+devPushChartRef+"\n"+
-			"Applied dogu nexus 3.96.4-3-dev.20261103143012 (context k3d-dev1, namespace ecosystem)\n"+
+			"Applied dogu nexus 1.2.3-dev.20261103143012 (context k3d-dev1, namespace ecosystem)\n"+
 			"Watch: kubectl --context k3d-dev1 -n ecosystem get dogu nexus -w\n", stdout)
 	})
 
@@ -377,11 +377,11 @@ func TestDevPushCommand_dryRun(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, `Dry run, nothing has been built, pushed or applied.
-Would build image nexus -> localhost:5001/official/dogu/v3/images/nexus:3.96.4-3-dev.20261103143012
+Would build image nexus -> localhost:5001/official/dogu/v3/images/nexus:1.2.3-dev.20261103143012
 Would replace image sidecar -> registry.example.com/foo:1.0
 Would skip image postgres
 Would push chart oci://`+devPushChartRef+`
-Would apply dogu nexus 3.96.4-3-dev.20261103143012 (context k3d-dev1, namespace ecosystem):
+Would apply dogu nexus 1.2.3-dev.20261103143012 (context k3d-dev1, namespace ecosystem):
 apiVersion: k8s.cloudogu.com/v3beta1
 kind: Dogu
 metadata:
@@ -392,7 +392,7 @@ spec:
   doguApiVersion: v3
   doguNamespace: official
   name: nexus
-  version: 3.96.4-3-dev.20261103143012
+  version: 1.2.3-dev.20261103143012
 `, stdout)
 	})
 

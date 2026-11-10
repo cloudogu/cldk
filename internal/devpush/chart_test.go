@@ -73,8 +73,8 @@ func TestPush_version(t *testing.T) {
 		{
 			name:       "a chart version with build metadata",
 			cldkYAML:   "namespace: official\n",
-			chartFiles: map[string]string{"Chart.yaml": "apiVersion: v2\nname: nexus\nversion: 3.96.4-3+build.1\n"},
-			wantErr:    `version "3.96.4-3+build.1" of chart nexus has build metadata`,
+			chartFiles: map[string]string{"Chart.yaml": "apiVersion: v2\nname: nexus\nversion: 1.2.3+build.1\n"},
+			wantErr:    `version "1.2.3+build.1" of chart nexus has build metadata`,
 		},
 	} {
 		t.Run("aborts without pushing on "+tt.name, func(t *testing.T) {
