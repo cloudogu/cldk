@@ -242,10 +242,12 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
   - `dev-push` renders `mirror-patch-tpl.yaml` with the new references and merges the patches into the chart.
   - The chart is rewritten and linted before the first build.
 - The first failed build or push aborts with the image name and the exit code of the builder; images pushed before stay in the dev registry.
+- Only the images of `cldk.yaml` are built; the other images of the chart stay unchanged without any flag.
 - Replace or skip single images of `cldk.yaml` for one run, e.g. to work on one image only:
 
   ```shell
-  # build nexus, take an existing sidecar image and leave the postgres image of the chart as it is
+  # with the images nexus, sidecar and postgres in cldk.yaml:
+  #   build only nexus, take an existing sidecar image and keep the postgres image of the chart
   cldk dogu dev-push --replace-image sidecar=registry.example.com/foo/sidecar:1.0 --skip-image postgres
   ```
 

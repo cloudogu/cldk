@@ -94,7 +94,8 @@ const devPushExample = `  # .env in the dogu repository, e.g. for a k3d cluster 
   # build the images with podman for arm64 with a proxy from the environment
   cldk dogu dev-push --builder podman --platform linux/arm64 --build-arg HTTP_PROXY
 
-  # build nexus, take an existing sidecar image and leave the postgres image of the chart as it is
+  # with the images nexus, sidecar and postgres in cldk.yaml: 
+  #   build only nexus, take an existing sidecar image and keep the postgres image of the chart
   cldk dogu dev-push --replace-image sidecar=registry.example.com/foo/sidecar:1.0 --skip-image postgres`
 
 // newDevPushCommand creates the dev-push command.
@@ -173,23 +174,6 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 		return devpush.Options{}, err
 	}
 
-	buildArgs, buildArgsErr := r.stringArray(flagBuildArg)
-	replaceImageSpecs, replaceImageErr := r.stringArray(flagReplaceImage)
-	skipImageNames, skipImageErr := r.stringArray(flagSkipImage)
-
-	if err := errors.Join(buildArgsErr, replaceImageErr, skipImageErr); err != nil {
-		return devpush.Options{}, err
-	}
-
-	if err := validateBuildArgs(buildArgs); err != nil {
-		return devpush.Options{}, err
-	}
-
-	replaceImages, skipImages, err := resolveImageSelection(replaceImageSpecs, skipImageNames)
-	if err != nil {
-		return devpush.Options{}, err
-	}
-
 	opts := devpush.Options{
 		PlainHTTP: plainHTTP,
 		Insecure:  insecure,
@@ -199,11 +183,12 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 			Context:   r.str(flagKubeContext, envDevKubeContext, "current context"),
 			Namespace: r.str(flagKubeNamespace, envDevKubeNamespace, "namespace of the context"),
 		},
-		Builder:       r.str(flagBuilder, envDevBuilder, defaultBuilder),
-		Platform:      r.str(flagPlatform, envDevPlatform, "platform of the builder"),
-		BuildArgs:     buildArgs,
-		ReplaceImages: replaceImages,
-		SkipImages:    skipImages,
+		Builder:  r.str(flagBuilder, envDevBuilder, defaultBuilder),
+		Platform: r.str(flagPlatform, envDevPlatform, "platform of the builder"),
+	}
+
+	if err := resolveImageOptions(r, &opts); err != nil {
+		return devpush.Options{}, err
 	}
 
 	if opts.Builder == "" {
@@ -231,6 +216,32 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 	slog.Debug("cluster address of the dev registry", "address", opts.ClusterRegistry)
 
 	return opts, nil
+}
+
+// resolveImageOptions resolves the build arguments and the replaced and skipped images of dev-push into opts.
+func resolveImageOptions(r optionResolver, opts *devpush.Options) error {
+	buildArgs, buildArgsErr := r.stringArray(flagBuildArg)
+	replaceImageSpecs, replaceImageErr := r.stringArray(flagReplaceImage)
+	skipImageNames, skipImageErr := r.stringArray(flagSkipImage)
+
+	if err := errors.Join(buildArgsErr, replaceImageErr, skipImageErr); err != nil {
+		return err
+	}
+
+	if err := validateBuildArgs(buildArgs); err != nil {
+		return err
+	}
+
+	replaceImages, skipImages, err := resolveImageSelection(replaceImageSpecs, skipImageNames)
+	if err != nil {
+		return err
+	}
+
+	opts.BuildArgs = buildArgs
+	opts.ReplaceImages = replaceImages
+	opts.SkipImages = skipImages
+
+	return nil
 }
 
 // resolveImageSelection parses the images to replace, given as <name>=<reference>, and checks that each image is
