@@ -133,6 +133,7 @@ func planImages(opts Options, project cldkfile.ProjectFile, target, clusterTarge
 				Target:     img.Target,
 				BuildArgs:  mergeBuildArgs(img.BuildArgs, opts.BuildArgs),
 				Platform:   opts.Platform,
+				NoCache:    opts.NoCache,
 			},
 			clusterRef: clusterTarget.ImageRepository(imageName) + ":" + version,
 		})

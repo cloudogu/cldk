@@ -28,6 +28,8 @@ type BuildRequest struct {
 	BuildArgs []string
 	// Platform is the platform to build for, e.g. "linux/arm64", optional.
 	Platform string
+	// NoCache builds without the cache of the builder.
+	NoCache bool
 }
 
 // Builder runs a Docker compatible build CLI like docker or podman. The builder inherits the environment of cldk.
@@ -66,6 +68,10 @@ func (b *Builder) Build(ctx context.Context, req BuildRequest) error {
 
 	if req.Platform != "" {
 		args = append(args, "--platform", req.Platform)
+	}
+
+	if req.NoCache {
+		args = append(args, "--no-cache")
 	}
 
 	args = append(args, req.Context)

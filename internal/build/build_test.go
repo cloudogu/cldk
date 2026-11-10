@@ -131,6 +131,7 @@ func TestBuilder_Build(t *testing.T) {
 			Target:     "runtime",
 			BuildArgs:  []string{"FOO=bar", "HTTP_PROXY"},
 			Platform:   "linux/arm64",
+			NoCache:    true,
 		})
 
 		require.NoError(t, err)
@@ -142,6 +143,7 @@ func TestBuilder_Build(t *testing.T) {
 			"--build-arg", "FOO=bar",
 			"--build-arg", "HTTP_PROXY",
 			"--platform", "linux/arm64",
+			"--no-cache",
 			"/project/app",
 		}, b.args(t))
 	})

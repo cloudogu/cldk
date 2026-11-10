@@ -58,7 +58,7 @@ func TestPush_images(t *testing.T) {
 		dir := writeProject(t, twoImagesYAML, nil)
 
 		_, err := pusher.Push(context.Background(), Options{
-			Dir: dir, Registry: reg, Platform: "linux/arm64", BuildArgs: []string{"FOO=override", "HTTP_PROXY"},
+			Dir: dir, Registry: reg, Platform: "linux/arm64", NoCache: true, BuildArgs: []string{"FOO=override", "HTTP_PROXY"},
 		})
 
 		require.NoError(t, err)
@@ -69,6 +69,7 @@ func TestPush_images(t *testing.T) {
 			Tag:        nexusRef,
 			BuildArgs:  []string{"FOO=override", "HTTP_PROXY"},
 			Platform:   "linux/arm64",
+			NoCache:    true,
 		}, pusher.builder.BuildCalls()[0].Req)
 		assert.Equal(t, build.BuildRequest{
 			Context:    filepath.Join(dir, "sidecar"),
@@ -77,6 +78,7 @@ func TestPush_images(t *testing.T) {
 			Target:     "runtime",
 			BuildArgs:  []string{"BAZ=qux", "FOO=override", "HTTP_PROXY"},
 			Platform:   "linux/arm64",
+			NoCache:    true,
 		}, pusher.builder.BuildCalls()[1].Req)
 	})
 

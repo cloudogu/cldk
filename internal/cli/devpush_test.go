@@ -54,7 +54,7 @@ func isolateDevPushEnv(t *testing.T) {
 	t.Helper()
 
 	unsetEnv(t, envDevRegistry, envDevClusterRegistry, envDevNamespace, envDevPlainHTTP, envDevInsecure, envDevKubeContext,
-		envDevKubeNamespace, envDevBuilder, envDevPlatform)
+		envDevKubeNamespace, envDevBuilder, envDevPlatform, envDevNoCache)
 }
 
 // runDevPush runs dev-push with the given arguments in the project directory dir and returns the options passed to
@@ -82,7 +82,7 @@ func TestDevPushCommand(t *testing.T) {
 
 		opts, _, _, err := runDevPush(t, dir, "--reg", "localhost:5001", "--cluster-reg", "k3d-registry-proxy.localhost:5000",
 			"--namespace", "personal", "--plain-http", "--insecure", "--kube-context", "k3d-dev2", "--kube-namespace", "dogus",
-			"--builder", "podman", "--platform", "linux/arm64", "--build-arg", "FOO=bar", "--build-arg", "HTTP_PROXY")
+			"--builder", "podman", "--platform", "linux/arm64", "--no-cache", "--build-arg", "FOO=bar", "--build-arg", "HTTP_PROXY")
 
 		require.NoError(t, err)
 		assert.Equal(t, devpush.Options{
@@ -95,6 +95,7 @@ func TestDevPushCommand(t *testing.T) {
 			Kube:            kube.Options{Context: "k3d-dev2", Namespace: "dogus"},
 			Builder:         "podman",
 			Platform:        "linux/arm64",
+			NoCache:         true,
 			BuildArgs:       []string{"FOO=bar", "HTTP_PROXY"},
 		}, opts)
 	})
@@ -122,6 +123,7 @@ func TestDevPushCommand(t *testing.T) {
 		t.Setenv(envDevKubeNamespace, "dogus")
 		t.Setenv(envDevBuilder, "nerdctl")
 		t.Setenv(envDevPlatform, "linux/amd64")
+		t.Setenv(envDevNoCache, "true")
 		dir := t.TempDir()
 
 		opts, _, _, err := runDevPush(t, dir)
@@ -137,6 +139,7 @@ func TestDevPushCommand(t *testing.T) {
 			Kube:            kube.Options{Context: "k3d-dev2", Namespace: "dogus"},
 			Builder:         "nerdctl",
 			Platform:        "linux/amd64",
+			NoCache:         true,
 		}, opts)
 	})
 
@@ -342,7 +345,7 @@ func TestDevPushCommand(t *testing.T) {
 
 		for _, env := range []string{
 			envDevRegistry, envDevClusterRegistry, envDevNamespace, envDevPlainHTTP, envDevInsecure, envDevKubeContext,
-			envDevKubeNamespace, envDevBuilder, envDevPlatform,
+			envDevKubeNamespace, envDevBuilder, envDevPlatform, envDevNoCache,
 		} {
 			assert.Contains(t, stdout, "(env: "+env+")")
 		}

@@ -29,6 +29,7 @@ const (
 	envDevKubeNamespace   = "CLDK_DEV_KUBE_NAMESPACE"
 	envDevBuilder         = "CLDK_DEV_BUILDER"
 	envDevPlatform        = "CLDK_DEV_PLATFORM"
+	envDevNoCache         = "CLDK_DEV_NO_CACHE"
 )
 
 // defaultBuilder is the build CLI if none is given.
@@ -45,6 +46,7 @@ const (
 	flagKubeNamespace   = "kube-namespace"
 	flagBuilder         = "builder"
 	flagPlatform        = "platform"
+	flagNoCache         = "no-cache"
 	flagBuildArg        = "build-arg"
 	flagReplaceImage    = "replace-image"
 	flagSkipImage       = "skip-image"
@@ -156,6 +158,7 @@ func newDevPushCommand(pusher DevPusher) *cobra.Command {
 	cmd.Flags().String(flagKubeNamespace, "", "Kubernetes namespace of the dogu, default the namespace of the context, otherwise default (env: "+envDevKubeNamespace+")")
 	cmd.Flags().String(flagBuilder, "", "Docker compatible build CLI the images are built and pushed with, default "+defaultBuilder+" (env: "+envDevBuilder+")")
 	cmd.Flags().String(flagPlatform, "", "platform the images are built for as os/arch, passed to the builder (env: "+envDevPlatform+")")
+	cmd.Flags().Bool(flagNoCache, false, "build the images without the cache of the builder (env: "+envDevNoCache+")")
 	cmd.Flags().StringArray(flagBuildArg, nil, "build argument KEY=VALUE for all images, overrides buildArgs of cldk.yaml; KEY alone takes the value from the environment; repeatable")
 	cmd.Flags().StringArray(flagReplaceImage, nil, "image of cldk.yaml as <name>=<reference> that is not built, but written into the chart with this reference; repeatable")
 	cmd.Flags().StringArray(flagSkipImage, nil, "image of cldk.yaml that is neither built nor written into the chart; repeatable")
@@ -169,8 +172,9 @@ func newDevPushCommand(pusher DevPusher) *cobra.Command {
 func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 	plainHTTP, plainHTTPErr := r.boolean(flagPlainHTTP, envDevPlainHTTP)
 	insecure, insecureErr := r.boolean(flagInsecure, envDevInsecure)
+	noCache, noCacheErr := r.boolean(flagNoCache, envDevNoCache)
 
-	if err := errors.Join(plainHTTPErr, insecureErr); err != nil {
+	if err := errors.Join(plainHTTPErr, insecureErr, noCacheErr); err != nil {
 		return devpush.Options{}, err
 	}
 
@@ -185,6 +189,7 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 		},
 		Builder:  r.str(flagBuilder, envDevBuilder, defaultBuilder),
 		Platform: r.str(flagPlatform, envDevPlatform, "platform of the builder"),
+		NoCache:  noCache,
 	}
 
 	if err := resolveImageOptions(r, &opts); err != nil {

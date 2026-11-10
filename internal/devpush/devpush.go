@@ -34,6 +34,8 @@ type Options struct {
 	Builder string
 	// Platform is the platform the images are built for, e.g. "linux/arm64". If empty, the builder chooses.
 	Platform string
+	// NoCache builds the images without the cache of the builder.
+	NoCache bool
 	// BuildArgs are build arguments for all images as "KEY=VALUE" or "KEY", which takes the value from the
 	// environment. They override the build arguments of the same key in cldk.yaml.
 	BuildArgs []string

@@ -212,6 +212,7 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
 | `--kube-namespace <ns>`        | `CLDK_DEV_KUBE_NAMESPACE` | Kubernetes namespace of the dogu, default the namespace of the context, else `default` |
 | `--builder <bin>`              | `CLDK_DEV_BUILDER`        | Docker compatible build CLI, default `docker`                                          |
 | `--platform <os/arch>`         | `CLDK_DEV_PLATFORM`       | platform the images are built for, passed to the builder                               |
+| `--no-cache`                   | `CLDK_DEV_NO_CACHE`       | build the images without the cache of the builder, e.g. to enforce a clean build       |
 | `--build-arg KEY[=VALUE]`      |                           | build argument for all images, repeatable                                              |
 | `--replace-image <name>=<ref>` |                           | do not build the image `<name>`, write `<ref>` into the chart instead, repeatable      |
 | `--skip-image <name>`          |                           | neither build the image `<name>` nor write it into the chart, repeatable               |
@@ -230,7 +231,7 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
 #### Building images
 
 - `dev-push` builds the images of `cldk.yaml` one after another, ordered by name, and pushes each right after its build:
-  - `<builder> build -f <dockerfile> -t <reg>/<namespace>/dogu/v3/images/<name>:<dev-version> [--target …] [--build-arg …] [--platform …] <context>`
+  - `<builder> build -f <dockerfile> -t <reg>/<namespace>/dogu/v3/images/<name>:<dev-version> [--target …] [--build-arg …] [--platform …] [--no-cache] <context>`
   - `<builder> push <reg>/<namespace>/dogu/v3/images/<name>:<dev-version>`
 - The builder is any CLI with Docker compatible `build` and `push` commands, e.g. `docker` or `podman`.
   - It must be on the `PATH` if at least one image is built.
