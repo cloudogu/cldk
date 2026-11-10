@@ -217,21 +217,21 @@ func TestReleaseCommand(t *testing.T) {
 	t.Run("prints the images released before a failed push", func(t *testing.T) {
 		isolateCredentialEnv(t)
 		releaser := &MockReleaser{
-			ReleaseFunc: func(_ context.Context, _ string, _ release.Target, _ release.Options) (release.Result, error) {
+			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
 				return release.Result{
 					Images: []release.ReleasedImage{
-						{Source: "ci.example.com/nexus:3.96.4-3", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3", Digest: "sha256:abcd"},
+						{Source: "ci.example.com/nexus:3.96.4", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4", Digest: "sha256:abcd"},
 					},
-					ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:3.96.4-3",
+					ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3",
 				}, errors.New("failed to push chart")
 			},
 		}
 
-		stdout, _, err := runCldk(t, releaser, "release", "--namespace", "testing", "nexus-3.96.4-3.tgz")
+		stdout, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "nexus-1.2.3.tgz")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to push chart")
-		assert.Equal(t, "Released image ci.example.com/nexus:3.96.4-3 -> registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-3@sha256:abcd\n", stdout)
+		assert.Equal(t, "Released image ci.example.com/nexus:3.96.4 -> registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4@sha256:abcd\n", stdout)
 	})
 }
 

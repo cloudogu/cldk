@@ -136,6 +136,6 @@ func ValidateImageRef(ref string) error {
 		separator = "@"
 	}
 
-	return fmt.Errorf("image %s has no registry, give it explicitly, e.g. docker.io/%s%s%s",
+	return fmt.Errorf("image %q must include a registry hostname, e.g. docker.io/%s%s%s",
 		ref, parsed.Context().RepositoryStr(), separator, parsed.Identifier())
 }

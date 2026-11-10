@@ -307,7 +307,7 @@ patches:
 				modify: withMirrorPatchTemplate(`apiVersion: v1
 values:
   images:
-    nexus: registry.cloudogu.com/official/nexus:3.96.4-3
+    nexus: registry.cloudogu.com/official/nexus:3.96.4
 patches:
   values.yaml:
     image: "{{ .images.unknown }}"

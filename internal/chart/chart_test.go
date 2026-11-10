@@ -107,12 +107,12 @@ func TestValidateImageRef(t *testing.T) {
 		{
 			name:    "without registry",
 			ref:     "usermgt:3.4.5",
-			wantErr: "image usermgt:3.4.5 has no registry, give it explicitly, e.g. docker.io/library/usermgt:3.4.5",
+			wantErr: `image "usermgt:3.4.5" must include a registry hostname, e.g. docker.io/library/usermgt:3.4.5`,
 		},
 		{
 			name:    "with a path but without registry",
 			ref:     "cloudogu/usermgt:3.4.5",
-			wantErr: "image cloudogu/usermgt:3.4.5 has no registry, give it explicitly, e.g. docker.io/cloudogu/usermgt:3.4.5",
+			wantErr: `image "cloudogu/usermgt:3.4.5" must include a registry hostname, e.g. docker.io/cloudogu/usermgt:3.4.5`,
 		},
 		{
 			name:    "digest without registry",
