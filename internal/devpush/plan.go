@@ -50,6 +50,11 @@ func (p *Pusher) newDevPushPlan(ctx context.Context, opts Options) (*devPushPlan
 		return nil, err
 	}
 
+	values, err := loadValues(opts)
+	if err != nil {
+		return nil, err
+	}
+
 	c, version, err := p.loadChart(opts.Dir, project)
 	if err != nil {
 		return nil, err
@@ -68,7 +73,7 @@ func (p *Pusher) newDevPushPlan(ctx context.Context, opts Options) (*devPushPlan
 		return nil, err
 	}
 
-	archive, err := prepareChart(c, version, images.images)
+	archive, err := prepareChart(c, version, images.images, values)
 	if err != nil {
 		return nil, err
 	}
@@ -93,6 +98,7 @@ func (p *Pusher) newDevPushPlan(ctx context.Context, opts Options) (*devPushPlan
 			Version:   version,
 			URL:       "oci://" + clusterTarget.ChartRepository(c.Name()),
 			Insecure:  opts.PlainHTTP || opts.Insecure,
+			Values:    values,
 		},
 	}, nil
 }

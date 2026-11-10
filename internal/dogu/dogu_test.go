@@ -97,6 +97,15 @@ func TestObject(t *testing.T) {
 		}, obj.Object)
 	})
 
+	t.Run("contains the values", func(t *testing.T) {
+		chart := devChartNexus
+		chart.Values = map[string]any{"logLevel": "debug"}
+
+		obj := Object(chart)
+
+		assert.Equal(t, map[string]any{"logLevel": "debug"}, obj.Object["spec"].(map[string]any)["values"])
+	})
+
 	t.Run("marks an insecure dev chart", func(t *testing.T) {
 		chart := devChartNexus
 		chart.Insecure = true
@@ -115,6 +124,7 @@ func TestYAML(t *testing.T) {
 			Version:   "1.2.3-dev.20261103143012",
 			URL:       "oci://k3d-registry-proxy.localhost:5000/official/dogu/v3/charts/nexus",
 			Insecure:  true,
+			Values:    map[string]any{"replicas": int64(2), "resources": map[string]any{"memory": "2Gi"}},
 		})
 
 		require.NoError(t, err)
@@ -129,6 +139,10 @@ spec:
   doguApiVersion: v3
   doguNamespace: official
   name: nexus
+  values:
+    replicas: 2
+    resources:
+      memory: 2Gi
   version: 1.2.3-dev.20261103143012
 `, string(got))
 	})
@@ -174,6 +188,37 @@ func TestClientApply(t *testing.T) {
 		assert.Equal(t, true, obj.Object["spec"].(map[string]any)["stopped"])
 		assert.Equal(t, map[string]any{"replicas": int64(2)}, obj.Object["spec"].(map[string]any)["values"])
 		assert.Equal(t, map[string]any{"logLevel": "debug"}, obj.Object["spec"].(map[string]any)["mappedValues"])
+	})
+
+	t.Run("applies the values and keeps the values of others", func(t *testing.T) {
+		client, fake := newTestClient(t)
+		applyAs(t, fake, "kubectl", map[string]any{
+			"metadata": map[string]any{"name": "nexus"},
+			"spec":     map[string]any{"name": "nexus", "values": map[string]any{"replicas": int64(2)}},
+		})
+		withValues := devChartNexus
+		withValues.Values = map[string]any{"logLevel": "debug"}
+
+		require.NoError(t, client.Apply(context.Background(), withValues))
+
+		assert.Equal(t, map[string]any{"replicas": int64(2), "logLevel": "debug"},
+			getDogu(t, fake, "nexus").Object["spec"].(map[string]any)["values"])
+	})
+
+	t.Run("removes the values it applied before when they are no longer given", func(t *testing.T) {
+		client, fake := newTestClient(t)
+		applyAs(t, fake, "kubectl", map[string]any{
+			"metadata": map[string]any{"name": "nexus"},
+			"spec":     map[string]any{"name": "nexus", "values": map[string]any{"replicas": int64(2)}},
+		})
+		withValues := devChartNexus
+		withValues.Values = map[string]any{"logLevel": "debug"}
+		require.NoError(t, client.Apply(context.Background(), withValues))
+
+		require.NoError(t, client.Apply(context.Background(), devChartNexus))
+
+		assert.Equal(t, map[string]any{"replicas": int64(2)},
+			getDogu(t, fake, "nexus").Object["spec"].(map[string]any)["values"])
 	})
 
 	t.Run("removes the insecure annotation when it is no longer given", func(t *testing.T) {

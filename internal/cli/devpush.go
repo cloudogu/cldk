@@ -30,6 +30,7 @@ const (
 	envDevBuilder         = "CLDK_DEV_BUILDER"
 	envDevPlatform        = "CLDK_DEV_PLATFORM"
 	envDevNoCache         = "CLDK_DEV_NO_CACHE"
+	envDevValues          = "CLDK_DEV_VALUES"
 )
 
 // defaultBuilder is the build CLI if none is given.
@@ -47,6 +48,7 @@ const (
 	flagBuilder         = "builder"
 	flagPlatform        = "platform"
 	flagNoCache         = "no-cache"
+	flagValues          = "values"
 	flagBuildArg        = "build-arg"
 	flagReplaceImage    = "replace-image"
 	flagSkipImage       = "skip-image"
@@ -89,6 +91,9 @@ const devPushExample = `  # .env in the dogu repository, e.g. for a k3d cluster 
 
   # push the dogu in another directory to a personal namespace
   cldk --dir ../nexus dogu dev-push --namespace personal
+
+  # push the dogu with Helm values from a local file, applied as spec.values of the dogu
+  cldk dogu dev-push --values dev-values.yaml
 
   # push the dogu to another cluster
   cldk dogu dev-push --kube-context k3d-dev2 --kube-namespace ecosystem
@@ -159,6 +164,7 @@ func newDevPushCommand(pusher DevPusher) *cobra.Command {
 	cmd.Flags().String(flagBuilder, "", "Docker compatible build CLI the images are built and pushed with, default "+defaultBuilder+" (env: "+envDevBuilder+")")
 	cmd.Flags().String(flagPlatform, "", "platform the images are built for as os/arch, passed to the builder (env: "+envDevPlatform+")")
 	cmd.Flags().Bool(flagNoCache, false, "build the images without the cache of the builder (env: "+envDevNoCache+")")
+	cmd.Flags().String(flagValues, "", "YAML file with Helm values for the dogu, relative to the project directory; applied as spec.values and used for the lint (env: "+envDevValues+")")
 	cmd.Flags().StringArray(flagBuildArg, nil, "build argument KEY=VALUE for all images, overrides buildArgs of cldk.yaml; KEY alone takes the value from the environment; repeatable")
 	cmd.Flags().StringArray(flagReplaceImage, nil, "image of cldk.yaml as <name>=<reference> that is not built, but written into the chart with this reference; repeatable")
 	cmd.Flags().StringArray(flagSkipImage, nil, "image of cldk.yaml that is neither built nor written into the chart; repeatable")
@@ -187,9 +193,10 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 			Context:   r.str(flagKubeContext, envDevKubeContext, "current context"),
 			Namespace: r.str(flagKubeNamespace, envDevKubeNamespace, "namespace of the context"),
 		},
-		Builder:  r.str(flagBuilder, envDevBuilder, defaultBuilder),
-		Platform: r.str(flagPlatform, envDevPlatform, "platform of the builder"),
-		NoCache:  noCache,
+		Builder:    r.str(flagBuilder, envDevBuilder, defaultBuilder),
+		Platform:   r.str(flagPlatform, envDevPlatform, "platform of the builder"),
+		NoCache:    noCache,
+		ValuesFile: r.str(flagValues, envDevValues, ""),
 	}
 
 	if err := resolveImageOptions(r, &opts); err != nil {

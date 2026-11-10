@@ -213,7 +213,28 @@ kubectl -n ecosystem get pods -l app.kubernetes.io/instance=nexus \
   -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.containers[0].image}{"\n"}{end}'
 ```
 
-`values`, `mappedValues` and `stopped` of the dogu resource are kept on every push, `cldk` only sets its own fields.
+`mappedValues`, `stopped` and `values` set by others are kept on every push, `cldk` only sets its own fields.
+
+## Setting values
+
+If the dogu needs Helm values of its own in the cluster, put them into a local file, e.g. `dev-values.yaml`:
+
+```yaml
+logLevel: debug
+resources:
+  memory: 2Gi
+```
+
+and add it to the `.env`, so that every push applies them:
+
+```shell
+CLDK_DEV_VALUES=dev-values.yaml
+```
+
+- `cldk` sets the values as `spec.values` of the dogu resource and lints the chart with them before the first build, so violations of `values.schema.json` show up early.
+- `cldk` owns the values per key: a value of the file overrides the same value set before, e.g. with `kubectl`; other values stay.
+- If a value is no longer in the file on the next push, or a push runs without `--values`, `cldk` removes the value it set before.
+- Lists are always replaced as a whole.
 
 ## Building single images only
 

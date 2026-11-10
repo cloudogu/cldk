@@ -35,8 +35,8 @@ func (p *Pusher) loadChart(dir string, project cldkfile.ProjectFile) (*helmchart
 }
 
 // prepareChart sets the dev version in the chart, points it to the cluster references of the built images and to the
-// references of the replaced images, lints it and returns the packed chart.
-func prepareChart(c *helmchart.Chart, version string, images []plannedImage) ([]byte, error) {
+// references of the replaced images, lints it with the values and returns the packed chart.
+func prepareChart(c *helmchart.Chart, version string, images []plannedImage, values map[string]any) ([]byte, error) {
 	chart.SetVersion(c, version)
 
 	if err := rewriteImages(c, images); err != nil {
@@ -45,7 +45,7 @@ func prepareChart(c *helmchart.Chart, version string, images []plannedImage) ([]
 
 	slog.Info("linting chart", "name", c.Name(), "version", version)
 
-	warnings, err := chart.Lint(c)
+	warnings, err := chart.Lint(c, values)
 	logLintWarnings(warnings)
 
 	if err != nil {

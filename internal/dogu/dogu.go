@@ -41,6 +41,8 @@ type DevChart struct {
 	URL string
 	// Insecure is true if the dev chart is pulled via plain HTTP or without certificate verification.
 	Insecure bool
+	// Values are Helm values for the chart of the dogu, applied as spec.values; nil applies no values.
+	Values map[string]any
 }
 
 // Object returns the dogu resource of a dogu installed from the dev chart with exactly the fields cldk applies.
@@ -51,6 +53,17 @@ func Object(chart DevChart) *unstructured.Unstructured {
 		annotations[AnnotationDevChartInsecure] = "true"
 	}
 
+	spec := map[string]any{
+		"name":           chart.Name,
+		"doguNamespace":  chart.Namespace,
+		"version":        chart.Version,
+		"doguApiVersion": doguAPIVersionV3,
+	}
+
+	if len(chart.Values) > 0 {
+		spec["values"] = chart.Values
+	}
+
 	return &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": GVR.GroupVersion().String(),
 		"kind":       "Dogu",
@@ -58,12 +71,7 @@ func Object(chart DevChart) *unstructured.Unstructured {
 			"name":        chart.Name,
 			"annotations": annotations,
 		},
-		"spec": map[string]any{
-			"name":           chart.Name,
-			"doguNamespace":  chart.Namespace,
-			"version":        chart.Version,
-			"doguApiVersion": doguAPIVersionV3,
-		},
+		"spec": spec,
 	}}
 }
 

@@ -44,6 +44,9 @@ type Options struct {
 	ReplaceImages map[string]string
 	// SkipImages are images of cldk.yaml by name that are neither built nor written into the chart.
 	SkipImages []string
+	// ValuesFile is a YAML file with Helm values for the chart, relative to Dir unless absolute. The values are
+	// applied as spec.values of the dogu and the chart is linted with them. Optional.
+	ValuesFile string
 }
 
 // Result describes what has been pushed.

@@ -216,7 +216,7 @@ func TestLint(t *testing.T) {
 		c, err := LoadDir(copyChart(t, "nexus", nil))
 		require.NoError(t, err)
 
-		warnings, err := Lint(c)
+		warnings, err := Lint(c, nil)
 
 		require.NoError(t, err)
 		assert.Empty(t, warnings)
@@ -229,7 +229,7 @@ func TestLint(t *testing.T) {
 		}))
 		require.NoError(t, err)
 
-		warnings, err := Lint(c)
+		warnings, err := Lint(c, nil)
 
 		require.NoError(t, err)
 		require.NotEmpty(t, warnings)
@@ -242,10 +242,21 @@ func TestLint(t *testing.T) {
 		}))
 		require.NoError(t, err)
 
-		_, err = Lint(c)
+		_, err = Lint(c, nil)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "missingValue")
+	})
+
+	t.Run("lints with the given values", func(t *testing.T) {
+		c, err := LoadDir(copyChart(t, "nexus", map[string]string{
+			"values.schema.json": `{"type": "object", "required": ["missingValue"]}`,
+		}))
+		require.NoError(t, err)
+
+		_, err = Lint(c, map[string]any{"missingValue": "given"})
+
+		require.NoError(t, err)
 	})
 
 	t.Run("lints the chart in memory with its changes", func(t *testing.T) {
@@ -253,7 +264,7 @@ func TestLint(t *testing.T) {
 		require.NoError(t, err)
 		findFile(c.Templates, "templates/statefulset.yaml").Data = []byte("replicas: {{ .Values.missing.replicas }}\n")
 
-		_, err = Lint(c)
+		_, err = Lint(c, nil)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "missing")

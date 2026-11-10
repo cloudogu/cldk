@@ -126,3 +126,88 @@ func TestPlan(t *testing.T) {
 		})
 	}
 }
+
+func TestPlanValues(t *testing.T) {
+	const reg = "localhost:5001"
+
+	// writeValues writes the values file into the directory and returns its path.
+	writeValues := func(t *testing.T, dir, content string) string {
+		t.Helper()
+
+		path := filepath.Join(dir, "dev-values.yaml")
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+		return path
+	}
+
+	t.Run("applies the values of the values file relative to the project directory", func(t *testing.T) {
+		pusher := newMockedPusher()
+		dir := writeProject(t, "namespace: official\n", nil)
+		writeValues(t, dir, "replicas: 2\nresources:\n  memory: 2Gi\n")
+
+		plan, err := pusher.Plan(context.Background(), Options{Dir: dir, Registry: reg, ValuesFile: "dev-values.yaml"})
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"replicas": float64(2), "resources": map[string]any{"memory": "2Gi"}},
+			plan.DevChart.Values)
+	})
+
+	t.Run("takes an absolute values file", func(t *testing.T) {
+		pusher := newMockedPusher()
+		dir := writeProject(t, "namespace: official\n", nil)
+		path := writeValues(t, t.TempDir(), "logLevel: debug\n")
+
+		plan, err := pusher.Plan(context.Background(), Options{Dir: dir, Registry: reg, ValuesFile: path})
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"logLevel": "debug"}, plan.DevChart.Values)
+	})
+
+	t.Run("applies no values for an empty values file", func(t *testing.T) {
+		pusher := newMockedPusher()
+		dir := writeProject(t, "namespace: official\n", nil)
+		writeValues(t, dir, "# no values yet\n")
+
+		plan, err := pusher.Plan(context.Background(), Options{Dir: dir, Registry: reg, ValuesFile: "dev-values.yaml"})
+
+		require.NoError(t, err)
+		assert.Nil(t, plan.DevChart.Values)
+	})
+
+	t.Run("lints the chart with the values", func(t *testing.T) {
+		pusher := newMockedPusher()
+		dir := writeProject(t, "namespace: official\n", map[string]string{
+			"values.schema.json": `{"type": "object", "required": ["missingValue"]}`,
+		})
+		writeValues(t, dir, "missingValue: given\n")
+
+		_, err := pusher.Plan(context.Background(), Options{Dir: dir, Registry: reg, ValuesFile: "dev-values.yaml"})
+
+		require.NoError(t, err)
+	})
+
+	for _, tt := range []struct {
+		name    string
+		content string
+		wantErr string
+	}{
+		{name: "a missing values file", wantErr: "failed to read values file"},
+		{name: "invalid YAML", content: "replicas: [\n", wantErr: "is no valid YAML"},
+		{name: "values that are no map", content: "- replicas\n", wantErr: "must contain a map of Helm values"},
+	} {
+		t.Run("fails before anything else on "+tt.name, func(t *testing.T) {
+			pusher := newMockedPusher()
+			dir := writeProject(t, twoImagesYAML, nil)
+
+			if tt.content != "" {
+				writeValues(t, dir, tt.content)
+			}
+
+			_, err := pusher.Plan(context.Background(), Options{Dir: dir, Registry: reg, ValuesFile: "dev-values.yaml"})
+
+			require.ErrorContains(t, err, tt.wantErr)
+			assert.Empty(t, pusher.builder.CheckCalls())
+			assert.Empty(t, pusher.kubeOptions)
+		})
+	}
+}

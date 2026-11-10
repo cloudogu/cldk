@@ -54,7 +54,7 @@ func isolateDevPushEnv(t *testing.T) {
 	t.Helper()
 
 	unsetEnv(t, envDevRegistry, envDevClusterRegistry, envDevNamespace, envDevPlainHTTP, envDevInsecure, envDevKubeContext,
-		envDevKubeNamespace, envDevBuilder, envDevPlatform, envDevNoCache)
+		envDevKubeNamespace, envDevBuilder, envDevPlatform, envDevNoCache, envDevValues)
 }
 
 // runDevPush runs dev-push with the given arguments in the project directory dir and returns the options passed to
@@ -82,7 +82,7 @@ func TestDevPushCommand(t *testing.T) {
 
 		opts, _, _, err := runDevPush(t, dir, "--reg", "localhost:5001", "--cluster-reg", "k3d-registry-proxy.localhost:5000",
 			"--namespace", "personal", "--plain-http", "--insecure", "--kube-context", "k3d-dev2", "--kube-namespace", "dogus",
-			"--builder", "podman", "--platform", "linux/arm64", "--no-cache", "--build-arg", "FOO=bar", "--build-arg", "HTTP_PROXY")
+			"--builder", "podman", "--platform", "linux/arm64", "--no-cache", "--values", "dev-values.yaml", "--build-arg", "FOO=bar", "--build-arg", "HTTP_PROXY")
 
 		require.NoError(t, err)
 		assert.Equal(t, devpush.Options{
@@ -96,6 +96,7 @@ func TestDevPushCommand(t *testing.T) {
 			Builder:         "podman",
 			Platform:        "linux/arm64",
 			NoCache:         true,
+			ValuesFile:      "dev-values.yaml",
 			BuildArgs:       []string{"FOO=bar", "HTTP_PROXY"},
 		}, opts)
 	})
@@ -124,6 +125,7 @@ func TestDevPushCommand(t *testing.T) {
 		t.Setenv(envDevBuilder, "nerdctl")
 		t.Setenv(envDevPlatform, "linux/amd64")
 		t.Setenv(envDevNoCache, "true")
+		t.Setenv(envDevValues, "local/values.yaml")
 		dir := t.TempDir()
 
 		opts, _, _, err := runDevPush(t, dir)
@@ -140,6 +142,7 @@ func TestDevPushCommand(t *testing.T) {
 			Builder:         "nerdctl",
 			Platform:        "linux/amd64",
 			NoCache:         true,
+			ValuesFile:      "local/values.yaml",
 		}, opts)
 	})
 
@@ -345,7 +348,7 @@ func TestDevPushCommand(t *testing.T) {
 
 		for _, env := range []string{
 			envDevRegistry, envDevClusterRegistry, envDevNamespace, envDevPlainHTTP, envDevInsecure, envDevKubeContext,
-			envDevKubeNamespace, envDevBuilder, envDevPlatform, envDevNoCache,
+			envDevKubeNamespace, envDevBuilder, envDevPlatform, envDevNoCache, envDevValues,
 		} {
 			assert.Contains(t, stdout, "(env: "+env+")")
 		}

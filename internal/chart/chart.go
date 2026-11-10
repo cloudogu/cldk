@@ -70,13 +70,17 @@ func Pack(c *helmchart.Chart) ([]byte, error) {
 	return archive, nil
 }
 
-// Lint checks the chart like "helm lint" does, including values.schema.json. It fails on errors and returns the
-// warnings.
-func Lint(c *helmchart.Chart) (warnings []string, err error) {
+// Lint checks the chart like "helm lint" does, including values.schema.json, with the values merged over the values of
+// the chart like "helm lint --values". It fails on errors and returns the warnings.
+func Lint(c *helmchart.Chart, values map[string]any) (warnings []string, err error) {
 	var result *action.LintResult
 
+	if values == nil {
+		values = map[string]any{}
+	}
+
 	err = withArchiveFile(c, func(path string) error {
-		result = action.NewLint().Run([]string{path}, map[string]any{})
+		result = action.NewLint().Run([]string{path}, values)
 
 		return nil
 	})

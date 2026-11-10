@@ -199,6 +199,7 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
 - The chart is loaded from its directory like `helm package` does, including `.helmignore`.
   - If `Chart.yaml` declares dependencies, they must be in `charts/`; run `helm dependency build <chart dir>` first.
   - The chart is checked with `helm lint` (including `values.schema.json`) before anything is built or pushed; errors abort, warnings are logged.
+  - With `--values`, the chart is linted with these values, like `helm lint --values`.
 - The dev registry, its access and the cluster are given as flags or environment variables, flags first:
 
 | Flag                           | Environment variable      | Description                                                                            |
@@ -213,6 +214,7 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
 | `--builder <bin>`              | `CLDK_DEV_BUILDER`        | Docker compatible build CLI, default `docker`                                          |
 | `--platform <os/arch>`         | `CLDK_DEV_PLATFORM`       | platform the images are built for, passed to the builder                               |
 | `--no-cache`                   | `CLDK_DEV_NO_CACHE`       | build the images without the cache of the builder, e.g. to enforce a clean build       |
+| `--values <file>`              | `CLDK_DEV_VALUES`         | YAML file with Helm values for the dogu, relative to the project directory             |
 | `--build-arg KEY[=VALUE]`      |                           | build argument for all images, repeatable                                              |
 | `--replace-image <name>=<ref>` |                           | do not build the image `<name>`, write `<ref>` into the chart instead, repeatable      |
 | `--skip-image <name>`          |                           | neither build the image `<name>` nor write it into the chart, repeatable               |
@@ -263,7 +265,13 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
   - `spec.version` is the dev version, `spec.doguApiVersion` is `v3`, `spec.name` and `metadata.name` are the `name` of `Chart.yaml`, `spec.doguNamespace` is the dogu namespace.
   - The annotation `k8s.cloudogu.com/dev-chart-url` holds the URL of the chart without tag from the cluster address of the dev registry, e.g. `oci://k3d-registry-proxy.localhost:5000/official/dogu/v3/charts/nexus`.
   - The annotation `k8s.cloudogu.com/dev-chart-insecure: "true"` is set with `--plain-http` or `--insecure` and removed without them.
-  - All other fields of an existing dogu, e.g. `values`, `mappedValues` or `stopped`, are kept.
+  - With `--values`, `spec.values` gets the values of the file; an empty file applies no values.
+  - All other fields of an existing dogu, e.g. `mappedValues`, `stopped` or values set by others, are kept.
+- Values are owned per key:
+  - A value of the file overrides the same value set before, e.g. with `kubectl`.
+  - A value that `cldk` applied before and that is no longer in the file, or a push without `--values`, removes it from the dogu.
+  - Lists are replaced as a whole.
+  - Put `CLDK_DEV_VALUES` into the `.env`, so that every push applies the same values.
 - `KUBECONFIG` may be set in the `.env`.
   - Select another context or namespace with `--kube-context` and `--kube-namespace`.
 - Before linting and pushing, `dev-push` logs the context, server and namespace of the cluster.
