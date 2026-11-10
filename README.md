@@ -1,6 +1,25 @@
 # cldk
 Cloudogu (LOP) Development Kit helps developers in releasing and developing their Dogu helm-charts.
 
+## Overview
+
+A dogu v3 is a Helm chart plus its container images, both stored in an OCI registry:
+
+```text
+oci://<reg>/<namespace>/dogu/v3/charts/<name>:<version>
+<reg>/<namespace>/dogu/v3/images/<name>:<tag>
+```
+
+The chart refers to its images in `values.images` of its `mirror-patch-tpl.yaml`.
+`cldk` writes the new image references there whenever it publishes images together with a chart.
+
+`cldk` has two commands for this:
+
+| Command              | Use                          | What it does                                                                                                                              |
+|----------------------|------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| `cldk dogu release`  | Releasing, e.g. in the CI    | Copies existing images unchanged to the registry and publishes the packed chart with their references.                                    |
+| `cldk dogu dev-push` | Developing against a cluster | Builds the images of the repository, pushes them and the chart under a new dev version and installs this version in a Kubernetes cluster. |
+
 ## Usage
 
 ```shell
