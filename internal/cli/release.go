@@ -9,6 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cloudogu/cldk/internal/oci"
+
 	"github.com/cloudogu/cldk/internal/release"
 )
 
@@ -20,13 +22,13 @@ const (
 
 // Releaser plans and publishes a release, see release.Releaser.
 type Releaser interface {
-	Plan(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Plan, error)
-	Release(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Result, error)
+	Plan(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Plan, error)
+	Release(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Result, error)
 }
 
 func newReleaseCommand(releaser Releaser) *cobra.Command {
 	var (
-		target release.Target
+		target oci.Target
 		opts   release.Options
 		dryRun bool
 	)
@@ -67,7 +69,7 @@ func newReleaseCommand(releaser Releaser) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringArrayVarP(&opts.Images, "image", "i", nil, "image to release with the chart as <ref>[=<name>:<tag>] (repeatable), e.g. ci-registry.example.com/nexus:3.96.4-3 or localhost:5001/local-dev/nexus/main:3.96.4-3=nexus:3.96.4-3")
+	cmd.Flags().StringArrayVarP(&opts.Images, "image", "i", nil, "image to release with the chart as <ref>[=<name>:<tag>] (repeatable), e.g. ci-registry.example.com/nexus:3.96.4 or localhost:5001/local-dev/nexus/main:3.96.4=nexus:3.96.4")
 	cmd.Flags().StringArrayVar(&opts.ImageKeys, "image-key", nil, "assign an image to values.images.<key> in mirror-patch-tpl.yaml as <name>=<key> (repeatable), e.g. nexus=nexus")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "overwrite image tags with another digest and an already released chart version in the target registry")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "check the release and print the plan without pushing anything")

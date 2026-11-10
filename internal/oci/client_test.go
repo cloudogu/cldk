@@ -1,4 +1,4 @@
-package release
+package oci
 
 import (
 	"encoding/base64"
@@ -45,6 +45,18 @@ func authRecordingRegistry(t *testing.T) (host string, recorded func() []string)
 
 		return append([]string(nil), headers...)
 	}
+}
+
+// isolateCredentialConfig points the docker and helm credential configuration to empty directories and returns them.
+func isolateCredentialConfig(t *testing.T) (dockerConfig, helmConfig string) {
+	t.Helper()
+
+	dockerConfig = t.TempDir()
+	helmConfig = t.TempDir()
+	t.Setenv("DOCKER_CONFIG", dockerConfig)
+	t.Setenv("HELM_CONFIG_HOME", helmConfig)
+
+	return dockerConfig, helmConfig
 }
 
 func basicAuth(user, password string) string {
@@ -102,7 +114,7 @@ func TestNewChartClient(t *testing.T) {
 			client, err := newChartClient(tt.target, newTransport(tt.target))
 			require.NoError(t, err)
 
-			_, err = client.Resolve(host + "/testing/dogu/v3/charts/nexus:3.96.4-3")
+			_, err = client.Resolve(host + "/testing/dogu/v3/charts/nexus:1.2.3")
 
 			require.Error(t, err) // the registry is empty, so the chart is never found
 			if tt.wantErr != "" {

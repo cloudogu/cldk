@@ -7,12 +7,16 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+
+	"github.com/cloudogu/cldk/internal/chart"
+	"github.com/cloudogu/cldk/internal/oci"
+	helmchart "helm.sh/helm/v4/pkg/chart/v2"
 )
 
 // Options are the settings of a release besides the target.
 type Options struct {
 	// Images are the images to release together with the chart, each given as "<source>" or "<source>=<target name>:<tag>",
-	// e.g. "ci-registry.example.com/nexus:3.96.4-3" or "localhost:5001/local-dev/nexus/main:3.96.4-3=nexus:3.96.4-3".
+	// e.g. "ci-registry.example.com/nexus:3.96.4" or "localhost:5001/local-dev/nexus/main:3.96.4=nexus:3.96.4".
 	// Each image is copied to the image repository of the target with the given name and tag,
 	// by default the last path segment of its source repository and its source tag.
 	Images []string
@@ -45,7 +49,7 @@ type Plan struct {
 	// Images are the planned images in the order of Options.Images.
 	Images []PlannedImage
 	// ChartReference is the full reference of the chart without scheme, e.g.
-	// "registry.cloudogu.com/official/dogu/v3/charts/nexus:3.96.4-3".
+	// "registry.cloudogu.com/official/dogu/v3/charts/nexus:1.2.3".
 	ChartReference string
 	// ChartStatus is the state of the chart in the target. A chart is never skipped.
 	ChartStatus Status
@@ -56,7 +60,7 @@ type PlannedImage struct {
 	// Source is the source reference of the image as given in Options.Images, without an explicit target.
 	Source string
 	// Reference is the full reference of the image in the target, e.g.
-	// "registry.cloudogu.com/official/dogu/v3/images/nexus:3.96.4-3".
+	// "registry.cloudogu.com/official/dogu/v3/images/nexus:3.96.4".
 	Reference string
 	// Digest is the digest of the manifest or index of the source.
 	Digest string
@@ -90,7 +94,7 @@ type Result struct {
 	// Images are the released images in the order of Options.Images.
 	Images []ReleasedImage
 	// ChartReference is the full reference of the released chart without scheme, e.g.
-	// "registry.cloudogu.com/official/dogu/v3/charts/nexus:3.96.4-3".
+	// "registry.cloudogu.com/official/dogu/v3/charts/nexus:1.2.3".
 	ChartReference string
 	// ChartStatus is the state of the chart in the target. A chart is never skipped.
 	ChartStatus Status
@@ -108,7 +112,7 @@ func NewReleaser() *Releaser {
 
 // Plan computes the release of the packed chart archive (.tgz) at chartPath to the target including all checks of the
 // sources and targets, but pushes nothing. Conflicts in the target are part of the plan, see Plan.Conflicts.
-func (r *Releaser) Plan(ctx context.Context, chartPath string, target Target, opts Options) (Plan, error) {
+func (r *Releaser) Plan(ctx context.Context, chartPath string, target oci.Target, opts Options) (Plan, error) {
 	p, err := newReleasePlan(ctx, chartPath, target, opts)
 	if err != nil {
 		return Plan{}, err
@@ -122,7 +126,7 @@ func (r *Releaser) Plan(ctx context.Context, chartPath string, target Target, op
 // never refers to missing images.
 // If a push fails, the result holds the images released before the failure and no ChartDigest, so that the caller
 // can report what already is in the target.
-func (r *Releaser) Release(ctx context.Context, chartPath string, target Target, opts Options) (Result, error) {
+func (r *Releaser) Release(ctx context.Context, chartPath string, target oci.Target, opts Options) (Result, error) {
 	p, err := newReleasePlan(ctx, chartPath, target, opts)
 	if err != nil {
 		return Result{}, err
@@ -138,8 +142,8 @@ func (r *Releaser) Release(ctx context.Context, chartPath string, target Target,
 
 // releasePlan is a computed release with everything needed to push it.
 type releasePlan struct {
-	publisher *publisher
-	images    []checkedImage
+	client *oci.Client
+	images []checkedImage
 	// archive is the chart archive to push, rewritten to the targets of the images.
 	archive     []byte
 	chartRef    string
@@ -147,13 +151,13 @@ type releasePlan struct {
 }
 
 // newReleasePlan reads and rewrites the chart, resolves the images and checks all targets without pushing anything.
-func newReleasePlan(ctx context.Context, chartPath string, target Target, opts Options) (*releasePlan, error) {
+func newReleasePlan(ctx context.Context, chartPath string, target oci.Target, opts Options) (*releasePlan, error) {
 	archive, err := os.ReadFile(chartPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read chart: %w", err)
 	}
 
-	meta, err := loadChartMetadata(archive)
+	c, err := chart.LoadArchive(archive)
 	if err != nil {
 		return nil, fmt.Errorf("%s is not a valid chart archive: %w", chartPath, err)
 	}
@@ -174,31 +178,31 @@ func newReleasePlan(ctx context.Context, chartPath string, target Target, opts O
 	}
 
 	if len(specs) > 0 {
-		archive, err = rewriteChartForImages(archive, specs, keys)
+		archive, err = rewriteChartForImages(c, specs, keys)
 		if err != nil {
 			return nil, fmt.Errorf("failed to rewrite chart %s: %w", chartPath, err)
 		}
 	}
 
-	pub, err := newPublisher(target)
+	client, err := oci.NewClient(target)
 	if err != nil {
 		return nil, err
 	}
 
-	ref := target.chartRepository(meta.Name) + ":" + meta.Version
+	ref := target.ChartRepository(c.Metadata.Name) + ":" + c.Metadata.Version
 
-	images, err := pub.checkImages(ctx, resolved, opts.Force)
+	images, err := checkImages(ctx, client, resolved, opts.Force)
 	if err != nil {
 		return nil, err
 	}
 
-	chartStatus, err := pub.checkChart(ref, opts.Force)
+	chartStatus, err := checkChart(ctx, client, ref, opts.Force)
 	if err != nil {
 		return nil, err
 	}
 
 	return &releasePlan{
-		publisher:   pub,
+		client:      client,
 		images:      images,
 		archive:     archive,
 		chartRef:    ref,
@@ -223,7 +227,7 @@ func (p *releasePlan) push(ctx context.Context) (Result, error) {
 	result := Result{ChartReference: p.chartRef, ChartStatus: p.chartStatus}
 
 	for _, img := range p.images {
-		released, err := p.publisher.pushImage(ctx, img)
+		released, err := pushCheckedImage(ctx, p.client, img)
 		if err != nil {
 			return result, err
 		}
@@ -231,7 +235,9 @@ func (p *releasePlan) push(ctx context.Context) (Result, error) {
 		result.Images = append(result.Images, released)
 	}
 
-	digest, err := p.publisher.pushChart(p.archive, p.chartRef)
+	slog.Debug("pushing chart", "target", p.chartRef)
+
+	digest, err := p.client.PushChart(ctx, p.archive, p.chartRef)
 	if err != nil {
 		return result, err
 	}
@@ -241,15 +247,15 @@ func (p *releasePlan) push(ctx context.Context) (Result, error) {
 	return result, nil
 }
 
-// rewriteChartForImages points the chart archive to the target references of the images.
-func rewriteChartForImages(archive []byte, images []imageSpec, keys map[string]string) ([]byte, error) {
+// rewriteChartForImages points the chart to the target references of the images and returns the repacked archive.
+func rewriteChartForImages(c *helmchart.Chart, images []imageSpec, keys map[string]string) ([]byte, error) {
 	targets := make(map[string]string, len(images))
 
 	for _, img := range images {
 		targets[img.targetName] = img.target.String()
 	}
 
-	rewritten, changes, err := rewriteChart(archive, targets, keys)
+	changes, err := chart.RewriteImages(c, targets, keys)
 	if err != nil {
 		return nil, err
 	}
@@ -258,5 +264,5 @@ func rewriteChartForImages(archive []byte, images []imageSpec, keys map[string]s
 		slog.Debug("rewriting image of chart", "key", change.Key, "old", change.Old, "new", change.New)
 	}
 
-	return rewritten, nil
+	return chart.Pack(c)
 }
