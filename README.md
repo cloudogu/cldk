@@ -15,10 +15,10 @@ The chart refers to its images in `values.images` of its `mirror-patch-tpl.yaml`
 
 `cldk` has two commands for this:
 
-| Command              | Use                          | What it does                                                                                                                              |
-|----------------------|------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| `cldk dogu release`  | Releasing, e.g. in the CI    | Copies existing images unchanged to the registry and publishes the packed chart with their references.                                    |
-| `cldk dogu dev-push` | Developing against a cluster | Builds the images of the repository, pushes them and the chart under a new dev version and installs this version in a Kubernetes cluster. |
+| Command              | Use                          | What it does                                                                                                                                     |
+|----------------------|------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| `cldk dogu release`  | Releasing, e.g. in the CI    | Builds the images of the repository with their release tags, or copies existing images unchanged, and publishes the chart with their references. |
+| `cldk dogu dev-push` | Developing against a cluster | Builds the images of the repository, pushes them and the chart under a new dev version and installs this version in a Kubernetes cluster.        |
 
 ## Installation
 
@@ -63,6 +63,8 @@ go install github.com/cloudogu/cldk@v0.1.0
 ## Usage
 
 ```shell
+cldk dogu release   # release the dogu v3 in the working directory to registry.cloudogu.com, building its images
+cldk dogu release --dry-run   # print the plan of the release without building or pushing anything
 cldk dogu release --dogu-namespace <ns> <chart.tgz>   # release a packed dogu chart to registry.cloudogu.com
 cldk dogu release --dogu-namespace <ns> -i <image> ... <chart.tgz>   # release the chart together with its images
 cldk dogu release --dry-run --dogu-namespace <ns> -i <image> ... <chart.tgz>   # print the plan without pushing anything
@@ -76,8 +78,9 @@ cldk dogu release --help   # show the options of a command
 
 ### `dogu release`
 
-`cldk dogu release` publishes a packed chart of a dogu v3 and optionally its images to a registry, by default `registry.cloudogu.com`.
-The images are copied unchanged with the same digest, the chart gets the new image references.
+`cldk dogu release` publishes a dogu v3, its chart and its images, to a registry, by default `registry.cloudogu.com`.
+Without argument, it builds the images of the project directory with their release tags and publishes them with the chart of the project directory.
+With a packed chart as argument, it copies the images given with `-i` unchanged with the same digest; the chart gets the new image references.
 
 - Guide: [Releasing a dogu with `cldk dogu release`](docs/operations/releasing_a_dogu_en.md) ([Deutsch](docs/operations/releasing_a_dogu_de.md))
 - All options: [`cldk dogu release` reference](docs/operations/dogu_release_reference_en.md) ([Deutsch](docs/operations/dogu_release_reference_de.md))

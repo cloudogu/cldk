@@ -111,7 +111,7 @@ func TestReleaseChart(t *testing.T) {
 		reg := newTargetRegistry(t)
 		chartPath, chartContent := packChart(t, "nexus")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{})
 		require.NoError(t, err)
 
 		ref, err := name.ParseReference(reg + chartReference)
@@ -132,7 +132,7 @@ func TestReleaseChart(t *testing.T) {
 		reg := newTargetRegistry(t)
 		chartPath, chartContent := packChart(t, "nexus")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{})
 		require.NoError(t, err)
 
 		client, err := helmregistry.NewClient(helmregistry.ClientOptPlainHTTP())
@@ -154,7 +154,7 @@ func TestReleaseChart(t *testing.T) {
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
 
-		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{})
 		require.NoError(t, err)
 
 		ref, err := name.ParseReference(reg + chartReference)
@@ -169,7 +169,7 @@ func TestReleaseChart(t *testing.T) {
 	t.Run("fails if the chart file does not exist", func(t *testing.T) {
 		reg := newTargetRegistry(t)
 
-		_, err := NewReleaser().Release(context.Background(), "/does/not/exist.tgz", testTarget(reg), Options{})
+		_, err := NewReleaser().Release(context.Background(), "/does/not/exist.tgz", testTarget(reg), ArchiveOptions{})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "/does/not/exist.tgz")
@@ -178,7 +178,7 @@ func TestReleaseChart(t *testing.T) {
 	t.Run("fails if the chart file is no chart archive", func(t *testing.T) {
 		reg := newTargetRegistry(t)
 
-		_, err := NewReleaser().Release(context.Background(), filepath.Join("testdata", "not-a-chart.tgz"), testTarget(reg), Options{})
+		_, err := NewReleaser().Release(context.Background(), filepath.Join("testdata", "not-a-chart.tgz"), testTarget(reg), ArchiveOptions{})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not a valid chart archive")
@@ -201,7 +201,7 @@ func TestReleaseAuthentication(t *testing.T) {
 		reg := newTargetRegistryWithBasicAuth(t, "releaser", "s3cret")
 		chartPath, _ := packChart(t, "nexus")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "credential not found")
@@ -215,7 +215,7 @@ func TestReleaseAuthentication(t *testing.T) {
 		target.User = "releaser"
 		target.Password = "s3cret"
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, target, Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, target, ArchiveOptions{})
 
 		require.NoError(t, err)
 		assertChartReleased(t, reg)
@@ -235,7 +235,7 @@ func TestReleaseAuthentication(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(dockerConfig, "config.json"), []byte(config), 0o600))
 		chartPath, _ := packChart(t, "nexus")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{})
 
 		require.NoError(t, err)
 		assertChartReleased(t, reg)
@@ -247,14 +247,14 @@ func TestReleasePlainHTTP(t *testing.T) {
 	chartPath, _ := packChart(t, "nexus")
 
 	t.Run("fails on a registry without TLS", func(t *testing.T) {
-		_, err := NewReleaser().Release(context.Background(), chartPath, oci.Target{Registry: reg, Namespace: "testing"}, Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, oci.Target{Registry: reg, Namespace: "testing"}, ArchiveOptions{})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "server gave HTTP response to HTTPS client")
 	})
 
 	t.Run("PlainHTTP allows a registry without TLS", func(t *testing.T) {
-		_, err := NewReleaser().Release(context.Background(), chartPath, oci.Target{Registry: reg, Namespace: "testing", PlainHTTP: true}, Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, oci.Target{Registry: reg, Namespace: "testing", PlainHTTP: true}, ArchiveOptions{})
 
 		require.NoError(t, err)
 
@@ -276,7 +276,7 @@ func TestReleaseInsecureSkipTLSVerify(t *testing.T) {
 	chartPath, _ := packChart(t, "nexus")
 
 	t.Run("fails on a registry with an untrusted certificate", func(t *testing.T) {
-		_, err := NewReleaser().Release(context.Background(), chartPath, oci.Target{Registry: reg, Namespace: "testing"}, Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, oci.Target{Registry: reg, Namespace: "testing"}, ArchiveOptions{})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "certificate")
@@ -285,7 +285,7 @@ func TestReleaseInsecureSkipTLSVerify(t *testing.T) {
 	t.Run("InsecureSkipTLSVerify allows an untrusted certificate", func(t *testing.T) {
 		target := oci.Target{Registry: reg, Namespace: "testing", InsecureSkipTLSVerify: true}
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, target, Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, target, ArchiveOptions{})
 
 		require.NoError(t, err)
 
@@ -350,7 +350,7 @@ func TestReleaseImages(t *testing.T) {
 		chartPath, _ := packChart(t, "nexus")
 		source, digest := newSourceImage(t, src, "ci/nexus:3.96.4")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{source}})
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{Images: []string{source}})
 
 		require.NoError(t, err)
 		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4"))
@@ -369,7 +369,7 @@ func TestReleaseImages(t *testing.T) {
 		digest, err := idx.Digest()
 		require.NoError(t, err)
 
-		_, err = NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{source}})
+		_, err = NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{Images: []string{source}})
 
 		require.NoError(t, err)
 		assert.Equal(t, digest.String(), imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4"))
@@ -381,7 +381,7 @@ func TestReleaseImages(t *testing.T) {
 		chartPath, _ := packChart(t, "nexus")
 		source, digest := newSourceImage(t, src, "ci/staging/nexus:3.96.4-rc1")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{source}})
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{Images: []string{source}})
 
 		require.NoError(t, err)
 		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4-rc1"))
@@ -394,7 +394,7 @@ func TestReleaseImages(t *testing.T) {
 		source, digest := newSourceImage(t, src, "local-dev/nexus/main:3.96.4-build.7")
 
 		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
-			Options{Images: []string{source + "=nexus:3.96.4"}})
+			ArchiveOptions{Images: []string{source + "=nexus:3.96.4"}})
 
 		require.NoError(t, err)
 		assert.Equal(t, digest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4"))
@@ -413,7 +413,7 @@ func TestReleaseImages(t *testing.T) {
 		chartPath, _ := packChart(t, "nexus")
 		source, _ := newSourceImage(t, src, "ci/sa-producer:0.2.0")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{
 			Images:    []string{source},
 			ImageKeys: []string{"sa-producer=nexusSaManager"},
 		})
@@ -436,7 +436,7 @@ func TestReleaseImages(t *testing.T) {
 		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4")
 		postgres, _ := newSourceImage(t, src, "ci/postgres:14.18")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus, postgres}})
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{Images: []string{nexus, postgres}})
 
 		require.NoError(t, err)
 
@@ -468,7 +468,7 @@ func TestReleaseImages(t *testing.T) {
 		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4")
 		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
 
-		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus, postgres}})
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{Images: []string{nexus, postgres}})
 
 		require.NoError(t, err)
 		assert.Equal(t, []ReleasedImage{
@@ -492,7 +492,7 @@ func TestReleaseImages(t *testing.T) {
 		target.User = "releaser"
 		target.Password = "s3cret"
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, target, Options{Images: []string{source}})
+		_, err := NewReleaser().Release(context.Background(), chartPath, target, ArchiveOptions{Images: []string{source}})
 
 		require.NoError(t, err)
 
@@ -517,7 +517,7 @@ func TestReleaseImages(t *testing.T) {
 		chartPath, _ := packChart(t, "nexus")
 		source, _ := newSourceImage(t, src, "ci/nexus:3.96.4")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{source}})
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{Images: []string{source}})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to push image "+source)
@@ -541,7 +541,7 @@ func TestReleaseImages(t *testing.T) {
 		chartPath, _ := packChart(t, "nexus")
 		source, digest := newSourceImage(t, src, "ci/nexus:3.96.4")
 
-		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{source}})
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{Images: []string{source}})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to push chart to "+reg+chartReference)
@@ -598,7 +598,7 @@ func TestReleaseImagesInsecureSkipTLSVerifyOnlyForTarget(t *testing.T) {
 	target := testTarget(reg)
 	target.InsecureSkipTLSVerify = true
 
-	_, err = NewReleaser().Release(context.Background(), chartPath, target, Options{Images: []string{source}})
+	_, err = NewReleaser().Release(context.Background(), chartPath, target, ArchiveOptions{Images: []string{source}})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to resolve image "+source)
@@ -625,7 +625,7 @@ patches:
 	t.Run("fails before pushing with a hint to --image-key", func(t *testing.T) {
 		reg := newTargetRegistry(t)
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus}})
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{Images: []string{nexus}})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), `several entries in values.images of mirror-patch-tpl.yaml have the repository name "nexus"`)
@@ -637,7 +637,7 @@ patches:
 		reg := newTargetRegistry(t)
 
 		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
-			Options{Images: []string{nexus}, ImageKeys: []string{"nexus=nexus"}})
+			ArchiveOptions{Images: []string{nexus}, ImageKeys: []string{"nexus=nexus"}})
 
 		require.NoError(t, err)
 
@@ -803,7 +803,7 @@ func TestReleaseImagesFailsBeforePushing(t *testing.T) {
 			reg := newTargetRegistry(t)
 			chartPath, _ := packChart(t, tt.chart)
 
-			_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: tt.images, ImageKeys: tt.imageKeys})
+			_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{Images: tt.images, ImageKeys: tt.imageKeys})
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
@@ -839,7 +839,7 @@ func TestReleaseExistingImages(t *testing.T) {
 		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
 		copyImage(t, nexus, reg+"/testing/dogu/v3/images/nexus:3.96.4")
 
-		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus, postgres}})
+		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{Images: []string{nexus, postgres}})
 
 		require.NoError(t, err)
 		assert.Equal(t, []ReleasedImage{
@@ -858,7 +858,7 @@ func TestReleaseExistingImages(t *testing.T) {
 		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
 		otherDigest := pushImage(t, reg+"/testing/dogu/v3/images/postgres:14.18")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus, postgres}})
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{Images: []string{nexus, postgres}})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "image "+reg+"/testing/dogu/v3/images/postgres:14.18 already exists with digest "+
@@ -877,7 +877,7 @@ func TestReleaseExistingImages(t *testing.T) {
 		pushImage(t, reg+"/testing/dogu/v3/images/nexus:3.96.4")
 
 		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
-			Options{Images: []string{nexus}, Force: true})
+			ArchiveOptions{Images: []string{nexus}, Force: true})
 
 		require.NoError(t, err)
 		assert.Equal(t, nexusDigest, imageDigest(t, reg+"/testing/dogu/v3/images/nexus:3.96.4"))
@@ -906,7 +906,7 @@ func TestReleaseExistingImages(t *testing.T) {
 		chartPath, _ := packChart(t, "nexus")
 		nexus, nexusDigest := newSourceImage(t, src, "ci/nexus:3.96.4")
 		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
-		opts := Options{Images: []string{nexus, postgres}}
+		opts := ArchiveOptions{Images: []string{nexus, postgres}}
 
 		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), opts)
 		require.Error(t, err)
@@ -938,10 +938,10 @@ func TestReleaseExistingChart(t *testing.T) {
 	t.Run("fails if the chart version is already released", func(t *testing.T) {
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{})
 		require.NoError(t, err)
 
-		_, err = NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		_, err = NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "chart "+reg+chartReference+" is already released")
@@ -953,10 +953,10 @@ func TestReleaseExistingChart(t *testing.T) {
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
 		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4")
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{})
 		require.NoError(t, err)
 
-		_, err = NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus}})
+		_, err = NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{Images: []string{nexus}})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "is already released")
@@ -968,11 +968,11 @@ func TestReleaseExistingChart(t *testing.T) {
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
 		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4")
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{})
 		require.NoError(t, err)
 
 		result, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg),
-			Options{Images: []string{nexus}, Force: true})
+			ArchiveOptions{Images: []string{nexus}, Force: true})
 
 		require.NoError(t, err)
 		assert.Equal(t, StatusOverwritten, result.ChartStatus)
@@ -1007,7 +1007,7 @@ func TestPlan(t *testing.T) {
 		postgres, postgresDigest := newSourceImage(t, src, "ci/postgres:14.18")
 
 		plan, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg),
-			Options{Images: []string{nexus, postgres}})
+			ArchiveOptions{Images: []string{nexus, postgres}})
 
 		require.NoError(t, err)
 		assertRegistryEmpty(t, reg)
@@ -1025,7 +1025,7 @@ func TestPlan(t *testing.T) {
 		reg := newTargetRegistry(t)
 		chartPath, _ := packChart(t, "nexus")
 
-		plan, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg), Options{})
+		plan, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg), ArchiveOptions{})
 
 		require.NoError(t, err)
 		assertRegistryEmpty(t, reg)
@@ -1049,7 +1049,7 @@ func TestPlan(t *testing.T) {
 		chartPath, _ := packChart(t, "nexus")
 		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4")
 
-		plan, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg), Options{Images: []string{nexus}})
+		plan, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg), ArchiveOptions{Images: []string{nexus}})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to check image "+reg+"/testing/dogu/v3/images/nexus:3.96.4")
@@ -1065,12 +1065,12 @@ func TestPlan(t *testing.T) {
 		copyImage(t, nexus, reg+"/testing/dogu/v3/images/nexus:3.96.4")
 		otherDigest := pushImage(t, reg+"/testing/dogu/v3/images/postgres:14.18")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{})
 		require.NoError(t, err)
 		chartDigest := imageDigest(t, reg+chartReference)
 
 		plan, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg),
-			Options{Images: []string{nexus, postgres}})
+			ArchiveOptions{Images: []string{nexus, postgres}})
 
 		require.NoError(t, err)
 		assert.Equal(t, []PlannedImage{
@@ -1093,12 +1093,12 @@ func TestPlan(t *testing.T) {
 		nexus, _ := newSourceImage(t, src, "ci/nexus:3.96.4")
 		otherDigest := pushImage(t, reg+"/testing/dogu/v3/images/nexus:3.96.4")
 
-		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), Options{})
+		_, err := NewReleaser().Release(context.Background(), chartPath, testTarget(reg), ArchiveOptions{})
 		require.NoError(t, err)
 		chartDigest := imageDigest(t, reg+chartReference)
 
 		plan, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg),
-			Options{Images: []string{nexus}, Force: true})
+			ArchiveOptions{Images: []string{nexus}, Force: true})
 
 		require.NoError(t, err)
 		require.Len(t, plan.Images, 1)
@@ -1115,7 +1115,7 @@ func TestPlan(t *testing.T) {
 		chartPath, _ := packChart(t, "nexus")
 		usermgt, _ := newSourceImage(t, src, "ci/usermgt:1.20.0-1")
 
-		_, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg), Options{Images: []string{usermgt}})
+		_, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg), ArchiveOptions{Images: []string{usermgt}})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), `no entry in values.images of mirror-patch-tpl.yaml has the repository name "usermgt"`)
@@ -1128,7 +1128,7 @@ func TestPlan(t *testing.T) {
 		chartPath, _ := packChart(t, "redmine-prerelease")
 		redmine, _ := newSourceImage(t, src, "ci/redmine:6.1.2-dev.1")
 
-		_, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg), Options{Images: []string{redmine}})
+		_, err := NewReleaser().Plan(context.Background(), chartPath, testTarget(reg), ArchiveOptions{Images: []string{redmine}})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "chart has no mirror-patch-tpl.yaml")

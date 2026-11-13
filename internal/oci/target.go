@@ -3,6 +3,7 @@ package oci
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
@@ -23,6 +24,9 @@ type Target struct {
 	// InsecureSkipTLSVerify allows TLS connections without certificate verification, e.g. for self-signed certificates.
 	InsecureSkipTLSVerify bool
 }
+
+// tagPattern is the grammar of a tag in the OCI distribution specification.
+var tagPattern = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$`)
 
 // ChartRepository returns the repository of a dogu chart in the target.
 func (t Target) ChartRepository(chartName string) string {
@@ -51,6 +55,15 @@ func ValidateImageName(imageName string) error {
 
 	if _, err := name.NewRepository("registry.example.com/"+imageName, name.StrictValidation); err != nil {
 		return fmt.Errorf("invalid image name %q: %w", imageName, err)
+	}
+
+	return nil
+}
+
+// ValidateTag checks that the tag is a valid tag of an image, e.g. "3.96.4-1".
+func ValidateTag(tag string) error {
+	if !tagPattern.MatchString(tag) {
+		return fmt.Errorf("invalid tag %q: must consist of up to 128 letters, digits, '_', '.' and '-' and must not start with '.' or '-'", tag)
 	}
 
 	return nil
