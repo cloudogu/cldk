@@ -58,7 +58,9 @@ func TestDotEnv(t *testing.T) {
 	})
 
 	t.Run("an empty process variable takes precedence over the .env", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
+		t.Setenv("CLDK_USER", "")
+		t.Setenv("CLDK_PASSWORD", "")
 		dir := writeDotEnv(t, "CLDK_USER=someone\nCLDK_PASSWORD=wrong\n")
 		releaser := newSuccessfulReleaser()
 
@@ -83,7 +85,7 @@ func TestDotEnv(t *testing.T) {
 	})
 
 	t.Run("a missing .env is not an error", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 		releaser := newSuccessfulReleaser()
 
 		_, _, err := runCldk(t, releaser, "--dir", t.TempDir(), "dogu", "release", "--namespace", "testing", "nexus-1.2.3.tgz")
@@ -93,7 +95,7 @@ func TestDotEnv(t *testing.T) {
 	})
 
 	t.Run("a broken .env fails with its path", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 		dir := writeDotEnv(t, "CLDK_USER releaser\n")
 		releaser := newSuccessfulReleaser()
 

@@ -12,6 +12,7 @@ import (
 	"github.com/cloudogu/cldk/internal/devpush"
 	"github.com/cloudogu/cldk/internal/dogu"
 	"github.com/cloudogu/cldk/internal/kube"
+	"github.com/cloudogu/cldk/internal/project"
 )
 
 const devPushChartRef = "localhost:5001/official/dogu/v3/charts/nexus:1.2.3-dev.20261103143012"
@@ -54,7 +55,7 @@ func isolateDevPushEnv(t *testing.T) {
 	t.Helper()
 
 	unsetEnv(t, envDevRegistry, envDevClusterRegistry, envDevNamespace, envDevPlainHTTP, envDevInsecure, envDevKubeContext,
-		envDevKubeNamespace, envDevBuilder, envDevPlatform, envDevNoCache, envDevValues)
+		envDevKubeNamespace, envDevValues, envBuilder, envPlatform, envNoCache)
 }
 
 // runDevPush runs dev-push with the given arguments in the project directory dir and returns the options passed to
@@ -93,11 +94,10 @@ func TestDevPushCommand(t *testing.T) {
 			PlainHTTP:       true,
 			Insecure:        true,
 			Kube:            kube.Options{Context: "k3d-dev2", Namespace: "dogus"},
-			Builder:         "podman",
-			Platform:        "linux/arm64",
-			NoCache:         true,
-			ValuesFile:      "dev-values.yaml",
-			BuildArgs:       []string{"FOO=bar", "HTTP_PROXY"},
+			Build: project.BuildOptions{
+				Builder: "podman", Platform: "linux/arm64", NoCache: true, BuildArgs: []string{"FOO=bar", "HTTP_PROXY"},
+			},
+			ValuesFile: "dev-values.yaml",
 		}, opts)
 	})
 
@@ -109,7 +109,8 @@ func TestDevPushCommand(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, devpush.Options{
-			Dir: dir, Registry: "registry.example.com", ClusterRegistry: "registry.example.com", Builder: "docker",
+			Dir: dir, Registry: "registry.example.com", ClusterRegistry: "registry.example.com",
+			Build: project.BuildOptions{Builder: "docker"},
 		}, opts)
 	})
 
@@ -122,9 +123,9 @@ func TestDevPushCommand(t *testing.T) {
 		t.Setenv(envDevInsecure, "1")
 		t.Setenv(envDevKubeContext, "k3d-dev2")
 		t.Setenv(envDevKubeNamespace, "dogus")
-		t.Setenv(envDevBuilder, "nerdctl")
-		t.Setenv(envDevPlatform, "linux/amd64")
-		t.Setenv(envDevNoCache, "true")
+		t.Setenv(envBuilder, "nerdctl")
+		t.Setenv(envPlatform, "linux/amd64")
+		t.Setenv(envNoCache, "true")
 		t.Setenv(envDevValues, "local/values.yaml")
 		dir := t.TempDir()
 
@@ -139,11 +140,21 @@ func TestDevPushCommand(t *testing.T) {
 			PlainHTTP:       true,
 			Insecure:        true,
 			Kube:            kube.Options{Context: "k3d-dev2", Namespace: "dogus"},
-			Builder:         "nerdctl",
-			Platform:        "linux/amd64",
-			NoCache:         true,
+			Build:           project.BuildOptions{Builder: "nerdctl", Platform: "linux/amd64", NoCache: true},
 			ValuesFile:      "local/values.yaml",
 		}, opts)
+	})
+
+	t.Run("ignores the former build variables CLDK_DEV_BUILDER, CLDK_DEV_PLATFORM and CLDK_DEV_NO_CACHE", func(t *testing.T) {
+		isolateDevPushEnv(t)
+		t.Setenv("CLDK_DEV_BUILDER", "nerdctl")
+		t.Setenv("CLDK_DEV_PLATFORM", "linux/amd64")
+		t.Setenv("CLDK_DEV_NO_CACHE", "true")
+
+		opts, _, _, err := runDevPush(t, t.TempDir(), "--reg", "localhost:5001")
+
+		require.NoError(t, err)
+		assert.Equal(t, project.BuildOptions{Builder: "docker"}, opts.Build)
 	})
 
 	t.Run("takes the options from the .env of the project directory", func(t *testing.T) {
@@ -158,7 +169,7 @@ func TestDevPushCommand(t *testing.T) {
 			Registry:        "localhost:5001",
 			ClusterRegistry: "k3d-registry-proxy.localhost:5000",
 			PlainHTTP:       true,
-			Builder:         "docker",
+			Build:           project.BuildOptions{Builder: "docker"},
 		}, opts)
 	})
 
@@ -205,7 +216,7 @@ func TestDevPushCommand(t *testing.T) {
 		opts, _, _, err := runDevPush(t, t.TempDir(), "--reg", "localhost:5001")
 
 		require.NoError(t, err)
-		assert.Empty(t, opts.BuildArgs)
+		assert.Empty(t, opts.Build.BuildArgs)
 	})
 
 	t.Run("prints the pushed images before the pushed chart", func(t *testing.T) {
@@ -348,7 +359,7 @@ func TestDevPushCommand(t *testing.T) {
 
 		for _, env := range []string{
 			envDevRegistry, envDevClusterRegistry, envDevNamespace, envDevPlainHTTP, envDevInsecure, envDevKubeContext,
-			envDevKubeNamespace, envDevBuilder, envDevPlatform, envDevNoCache, envDevValues,
+			envDevKubeNamespace, envDevValues, envBuilder, envPlatform, envNoCache,
 		} {
 			assert.Contains(t, stdout, "(env: "+env+")")
 		}
@@ -371,7 +382,7 @@ func TestDevPushCommand_dryRun(t *testing.T) {
 			Dir:             dir,
 			Registry:        "localhost:5001",
 			ClusterRegistry: "localhost:5001",
-			Builder:         "docker",
+			Build:           project.BuildOptions{Builder: "docker"},
 			SkipImages:      []string{"postgres"},
 		}, pusher.PlanCalls()[0].Opts)
 	})

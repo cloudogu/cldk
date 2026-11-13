@@ -34,7 +34,8 @@ func TestLoad(t *testing.T) {
 		dir := writeProjectFile(t, `namespace: official
 chart: helm/nexus
 images:
-  nexus: {}
+  nexus:
+    tag: 3.96.4-1
   sa-manager:
     context: sidecar
   postgres:
@@ -53,7 +54,7 @@ images:
 			Namespace: "official",
 			Chart:     "helm/nexus",
 			Images: map[string]Image{
-				"nexus":      {Context: ".", Dockerfile: "Dockerfile"},
+				"nexus":      {Context: ".", Dockerfile: "Dockerfile", Tag: "3.96.4-1"},
 				"sa-manager": {Context: "sidecar", Dockerfile: filepath.Join("sidecar", "Dockerfile")},
 				"postgres": {
 					Context:    "db",
@@ -86,6 +87,8 @@ images:
 		{name: "missing namespace", content: "chart: k8s/helm\n", wantErr: "namespace is required"},
 		{name: "image name with a slash", content: "namespace: official\nimages:\n  foo/nexus: {}\n", wantErr: `invalid image name "foo/nexus"`},
 		{name: "image name with upper case", content: "namespace: official\nimages:\n  Nexus: {}\n", wantErr: `invalid image name "Nexus"`},
+		{name: "a tag with a slash", content: "namespace: official\nimages:\n  nexus:\n    tag: 3.96/4\n", wantErr: `image nexus: invalid tag "3.96/4"`},
+		{name: "a tag starting with a dot", content: "namespace: official\nimages:\n  nexus:\n    tag: .1\n", wantErr: `image nexus: invalid tag ".1"`},
 		{name: "no YAML", content: "namespace: [official\n", wantErr: "failed to parse"},
 	}
 

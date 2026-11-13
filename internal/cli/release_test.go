@@ -16,10 +16,10 @@ import (
 // newSuccessfulReleaser returns a releaser mock that plans and releases every chart as nexus 1.2.3.
 func newSuccessfulReleaser() *MockReleaser {
 	return &MockReleaser{
-		PlanFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Plan, error) {
+		PlanFunc: func(_ context.Context, _ string, _ oci.Target, _ release.ArchiveOptions) (release.Plan, error) {
 			return release.Plan{ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3"}, nil
 		},
-		ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
+		ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.ArchiveOptions) (release.Result, error) {
 			return release.Result{
 				ChartReference: "registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3",
 				ChartDigest:    "sha256:1234",
@@ -28,17 +28,16 @@ func newSuccessfulReleaser() *MockReleaser {
 	}
 }
 
-// isolateCredentialEnv clears the environment variables for the target registry credentials.
-func isolateCredentialEnv(t *testing.T) {
+// isolateReleaseEnv removes the environment variables of release for the test.
+func isolateReleaseEnv(t *testing.T) {
 	t.Helper()
 
-	t.Setenv("CLDK_USER", "")
-	t.Setenv("CLDK_PASSWORD", "")
+	unsetEnv(t, envRegistry, envNamespace, envPlainHTTP, envInsecure, envUser, envPassword, envBuilder, envPlatform, envNoCache)
 }
 
 func TestReleaseCommand(t *testing.T) {
 	t.Run("passes the chart and the target from the flags to the releaser", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 		releaser := newSuccessfulReleaser()
 
 		_, _, err := runCldk(t, releaser, "dogu", "release", "--reg", "staging-registry.cloudogu.com", "--namespace", "testing",
@@ -58,7 +57,7 @@ func TestReleaseCommand(t *testing.T) {
 	})
 
 	t.Run("uses the defaults for omitted flags", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 		releaser := newSuccessfulReleaser()
 
 		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "nexus-1.2.3.tgz")
@@ -69,7 +68,7 @@ func TestReleaseCommand(t *testing.T) {
 	})
 
 	t.Run("passes the images to the releaser", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 		releaser := newSuccessfulReleaser()
 
 		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing",
@@ -77,12 +76,12 @@ func TestReleaseCommand(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
-		assert.Equal(t, release.Options{Images: []string{"ci.example.com/nexus:3.96.4", "ci.example.com/postgres:14.18"}},
+		assert.Equal(t, release.ArchiveOptions{Images: []string{"ci.example.com/nexus:3.96.4", "ci.example.com/postgres:14.18"}},
 			releaser.ReleaseCalls()[0].Opts)
 	})
 
 	t.Run("passes the images with explicit targets and the image keys to the releaser", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 		releaser := newSuccessfulReleaser()
 
 		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing",
@@ -91,25 +90,25 @@ func TestReleaseCommand(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
-		assert.Equal(t, release.Options{
+		assert.Equal(t, release.ArchiveOptions{
 			Images:    []string{"localhost:5001/local-dev/nexus/main:3.96.4=nexus:3.96.4", "ci.example.com/sa-producer:0.2.0"},
 			ImageKeys: []string{"nexus=nexus", "sa-producer=nexusSaManager"},
 		}, releaser.ReleaseCalls()[0].Opts)
 	})
 
 	t.Run("passes force to the releaser", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 		releaser := newSuccessfulReleaser()
 
 		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "--force", "nexus-1.2.3.tgz")
 
 		require.NoError(t, err)
 		require.Len(t, releaser.ReleaseCalls(), 1)
-		assert.Equal(t, release.Options{Force: true}, releaser.ReleaseCalls()[0].Opts)
+		assert.Equal(t, release.ArchiveOptions{Force: true}, releaser.ReleaseCalls()[0].Opts)
 	})
 
 	t.Run("only plans the release on a dry run", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 		releaser := newSuccessfulReleaser()
 
 		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "--dry-run", "--force", "nexus-1.2.3.tgz")
@@ -119,13 +118,13 @@ func TestReleaseCommand(t *testing.T) {
 		require.Len(t, releaser.PlanCalls(), 1)
 		assert.Equal(t, "nexus-1.2.3.tgz", releaser.PlanCalls()[0].ChartPath)
 		assert.Equal(t, oci.Target{Registry: "registry.cloudogu.com", Namespace: "testing"}, releaser.PlanCalls()[0].Target)
-		assert.Equal(t, release.Options{Force: true}, releaser.PlanCalls()[0].Opts)
+		assert.Equal(t, release.ArchiveOptions{Force: true}, releaser.PlanCalls()[0].Opts)
 	})
 
 	t.Run("marks overwritten images and charts", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 		releaser := &MockReleaser{
-			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
+			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.ArchiveOptions) (release.Result, error) {
 				return release.Result{
 					Images: []release.ReleasedImage{
 						{Source: "ci.example.com/nexus:3.96.4", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4", Digest: "sha256:abcd", Status: release.StatusOverwritten},
@@ -145,9 +144,9 @@ func TestReleaseCommand(t *testing.T) {
 	})
 
 	t.Run("marks skipped images", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 		releaser := &MockReleaser{
-			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
+			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.ArchiveOptions) (release.Result, error) {
 				return release.Result{
 					Images: []release.ReleasedImage{
 						{Source: "ci.example.com/nexus:3.96.4", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4", Digest: "sha256:abcd", Status: release.StatusSkipped},
@@ -168,9 +167,9 @@ func TestReleaseCommand(t *testing.T) {
 	})
 
 	t.Run("prints each released image before the chart", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 		releaser := &MockReleaser{
-			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
+			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.ArchiveOptions) (release.Result, error) {
 				return release.Result{
 					Images: []release.ReleasedImage{
 						{Source: "ci.example.com/nexus:3.96.4", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4", Digest: "sha256:abcd"},
@@ -191,7 +190,7 @@ func TestReleaseCommand(t *testing.T) {
 	})
 
 	t.Run("prints the released chart with its digest", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 
 		stdout, _, err := runCldk(t, newSuccessfulReleaser(), "dogu", "release", "--namespace", "testing", "nexus-1.2.3.tgz")
 
@@ -200,9 +199,9 @@ func TestReleaseCommand(t *testing.T) {
 	})
 
 	t.Run("returns the error of the releaser", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 		releaser := &MockReleaser{
-			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
+			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.ArchiveOptions) (release.Result, error) {
 				return release.Result{}, errors.New("registry unavailable")
 			},
 		}
@@ -215,9 +214,9 @@ func TestReleaseCommand(t *testing.T) {
 	})
 
 	t.Run("prints the images released before a failed push", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 		releaser := &MockReleaser{
-			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Result, error) {
+			ReleaseFunc: func(_ context.Context, _ string, _ oci.Target, _ release.ArchiveOptions) (release.Result, error) {
 				return release.Result{
 					Images: []release.ReleasedImage{
 						{Source: "ci.example.com/nexus:3.96.4", Reference: "registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4", Digest: "sha256:abcd"},
@@ -241,15 +240,19 @@ func TestReleaseCommandValidation(t *testing.T) {
 		args        []string
 		errContains string
 	}{
-		{"missing chart argument", []string{"dogu", "release", "--namespace", "testing"}, "accepts 1 arg"},
-		{"more than one chart argument", []string{"dogu", "release", "--namespace", "testing", "a.tgz", "b.tgz"}, "accepts 1 arg"},
-		{"missing namespace", []string{"dogu", "release", "nexus-1.2.3.tgz"}, `"namespace" not set`},
-		{"empty namespace", []string{"dogu", "release", "--namespace", "", "nexus-1.2.3.tgz"}, "--namespace must not be empty"},
+		{"more than one chart argument", []string{"dogu", "release", "--namespace", "testing", "a.tgz", "b.tgz"}, "accepts at most 1 arg"},
+		{"--tag with a chart archive", []string{"dogu", "release", "--namespace", "testing", "--tag", "nexus=1.0", "nexus-1.2.3.tgz"}, "--tag only applies to a release from the project directory, not to the chart archive nexus-1.2.3.tgz"},
+		{"--builder with a chart archive", []string{"dogu", "release", "--namespace", "testing", "--builder", "podman", "nexus-1.2.3.tgz"}, "--builder only applies to a release from the project directory"},
+		{"--platform with a chart archive", []string{"dogu", "release", "--namespace", "testing", "--platform", "linux/arm64", "nexus-1.2.3.tgz"}, "--platform only applies"},
+		{"--no-cache with a chart archive", []string{"dogu", "release", "--namespace", "testing", "--no-cache", "nexus-1.2.3.tgz"}, "--no-cache only applies"},
+		{"--build-arg with a chart archive", []string{"dogu", "release", "--namespace", "testing", "--build-arg", "FOO=bar", "nexus-1.2.3.tgz"}, "--build-arg only applies"},
+		{"missing namespace", []string{"dogu", "release", "nexus-1.2.3.tgz"}, "a chart archive needs the namespace, give it with --namespace or CLDK_NAMESPACE"},
+		{"empty namespace", []string{"dogu", "release", "--namespace", "", "nexus-1.2.3.tgz"}, "a chart archive needs the namespace"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			isolateCredentialEnv(t)
+			isolateReleaseEnv(t)
 			releaser := newSuccessfulReleaser()
 
 			_, _, err := runCldk(t, releaser, tt.args...)
@@ -257,12 +260,97 @@ func TestReleaseCommandValidation(t *testing.T) {
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.errContains)
 			assert.Empty(t, releaser.ReleaseCalls())
+			assert.Empty(t, releaser.ReleaseProjectCalls())
 		})
 	}
 }
 
+func TestReleaseCommandOptions(t *testing.T) {
+	t.Run("takes the target from the environment", func(t *testing.T) {
+		isolateReleaseEnv(t)
+		t.Setenv(envRegistry, "localhost:5001")
+		t.Setenv(envNamespace, "testing")
+		t.Setenv(envPlainHTTP, "true")
+		t.Setenv(envInsecure, "1")
+		releaser := newSuccessfulReleaser()
+
+		_, _, err := runCldk(t, releaser, "dogu", "release", "nexus-1.2.3.tgz")
+
+		require.NoError(t, err)
+		require.Len(t, releaser.ReleaseCalls(), 1)
+		assert.Equal(t, oci.Target{Registry: "localhost:5001", Namespace: "testing", PlainHTTP: true, InsecureSkipTLSVerify: true},
+			releaser.ReleaseCalls()[0].Target)
+	})
+
+	t.Run("takes the target from the .env of the project directory", func(t *testing.T) {
+		isolateReleaseEnv(t)
+		dir := writeDotEnv(t, "CLDK_REG=localhost:5001\nCLDK_NAMESPACE=testing\nCLDK_PLAIN_HTTP=true\n")
+		releaser := newSuccessfulReleaser()
+
+		_, _, err := runCldk(t, releaser, "--dir", dir, "dogu", "release", "nexus-1.2.3.tgz")
+
+		require.NoError(t, err)
+		require.Len(t, releaser.ReleaseCalls(), 1)
+		assert.Equal(t, oci.Target{Registry: "localhost:5001", Namespace: "testing", PlainHTTP: true}, releaser.ReleaseCalls()[0].Target)
+	})
+
+	t.Run("flags take precedence over the environment", func(t *testing.T) {
+		isolateReleaseEnv(t)
+		t.Setenv(envRegistry, "localhost:5001")
+		t.Setenv(envNamespace, "testing")
+		t.Setenv(envPlainHTTP, "true")
+		releaser := newSuccessfulReleaser()
+
+		_, _, err := runCldk(t, releaser, "dogu", "release", "--reg", "registry.example.com", "--namespace", "official",
+			"--plain-http=false", "nexus-1.2.3.tgz")
+
+		require.NoError(t, err)
+		require.Len(t, releaser.ReleaseCalls(), 1)
+		assert.Equal(t, oci.Target{Registry: "registry.example.com", Namespace: "official"}, releaser.ReleaseCalls()[0].Target)
+	})
+
+	t.Run("logs the resolved options with their source on -v, without the password", func(t *testing.T) {
+		isolateReleaseEnv(t)
+		t.Setenv(envNamespace, "testing")
+		t.Setenv(envUser, "releaser")
+		t.Setenv(envPassword, "s3cret")
+
+		_, stderr, err := runCldk(t, newSuccessfulReleaser(), "-v", "dogu", "release", "--plain-http", "nexus-1.2.3.tgz")
+
+		require.NoError(t, err)
+		assert.Contains(t, stderr, `option=reg value="" source="default: registry.cloudogu.com"`)
+		assert.Contains(t, stderr, `option=namespace value=testing source="env CLDK_NAMESPACE"`)
+		assert.Contains(t, stderr, `option=plain-http value=true source="flag --plain-http"`)
+		assert.Contains(t, stderr, `option=user value=releaser source="env CLDK_USER"`)
+		assert.Contains(t, stderr, `option=pass value=*** source="env CLDK_PASSWORD"`)
+		assert.NotContains(t, stderr, "s3cret")
+	})
+
+	t.Run("fails on an environment variable that is no boolean", func(t *testing.T) {
+		isolateReleaseEnv(t)
+		t.Setenv(envPlainHTTP, "yes please")
+		releaser := newSuccessfulReleaser()
+
+		_, _, err := runCldk(t, releaser, "dogu", "release", "--namespace", "testing", "nexus-1.2.3.tgz")
+
+		require.ErrorContains(t, err, `invalid value "yes please" of CLDK_PLAIN_HTTP`)
+		assert.Empty(t, releaser.ReleaseCalls())
+	})
+
+	t.Run("names the environment variable of each flag in the help", func(t *testing.T) {
+		stdout, _, err := runCldk(t, &MockReleaser{}, "dogu", "release", "--help")
+
+		require.NoError(t, err)
+
+		for _, env := range []string{envRegistry, envNamespace, envPlainHTTP, envInsecure, envUser, envPassword} {
+			assert.Contains(t, stdout, "(env: "+env+")")
+		}
+	})
+}
+
 func TestReleaseCommandCredentials(t *testing.T) {
 	t.Run("uses CLDK_USER and CLDK_PASSWORD", func(t *testing.T) {
+		isolateReleaseEnv(t)
 		t.Setenv("CLDK_USER", "releaser")
 		t.Setenv("CLDK_PASSWORD", "s3cret")
 		releaser := newSuccessfulReleaser()
@@ -276,6 +364,7 @@ func TestReleaseCommandCredentials(t *testing.T) {
 	})
 
 	t.Run("flags take precedence over environment", func(t *testing.T) {
+		isolateReleaseEnv(t)
 		t.Setenv("CLDK_USER", "someone")
 		t.Setenv("CLDK_PASSWORD", "wrong")
 		releaser := newSuccessfulReleaser()
@@ -303,7 +392,7 @@ func TestReleaseCommandCredentials(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				isolateCredentialEnv(t)
+				isolateReleaseEnv(t)
 
 				for key, value := range tt.env {
 					t.Setenv(key, value)
@@ -343,7 +432,7 @@ const dryRunOutput = "Dry run, nothing has been pushed.\n" +
 // newPlanningReleaser returns a releaser mock that plans the given plan.
 func newPlanningReleaser(plan release.Plan, err error) *MockReleaser {
 	return &MockReleaser{
-		PlanFunc: func(_ context.Context, _ string, _ oci.Target, _ release.Options) (release.Plan, error) {
+		PlanFunc: func(_ context.Context, _ string, _ oci.Target, _ release.ArchiveOptions) (release.Plan, error) {
 			return plan, err
 		},
 	}
@@ -362,7 +451,7 @@ func TestReleaseCommandDryRun(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run("prints the plan with a "+tt.name, func(t *testing.T) {
-			isolateCredentialEnv(t)
+			isolateReleaseEnv(t)
 			plan := dryRunPlan
 			plan.ChartStatus = tt.chartStatus
 
@@ -373,7 +462,7 @@ func TestReleaseCommandDryRun(t *testing.T) {
 	}
 
 	t.Run("prints the plan and fails with all conflicts", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 		plan := dryRunPlan
 		plan.ChartStatus = release.StatusConflict
 
@@ -386,7 +475,7 @@ func TestReleaseCommandDryRun(t *testing.T) {
 	})
 
 	t.Run("succeeds without conflicts", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 		plan := release.Plan{
 			Images:         dryRunPlan.Images[:3],
 			ChartReference: dryRunPlan.ChartReference,
@@ -398,7 +487,7 @@ func TestReleaseCommandDryRun(t *testing.T) {
 	})
 
 	t.Run("returns the error of the releaser without a plan", func(t *testing.T) {
-		isolateCredentialEnv(t)
+		isolateReleaseEnv(t)
 
 		stdout, _, err := runCldk(t, newPlanningReleaser(release.Plan{}, errors.New("registry unavailable")),
 			"dogu", "release", "--namespace", "testing", "--dry-run", "nexus-1.2.3.tgz")

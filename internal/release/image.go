@@ -18,7 +18,7 @@ import (
 
 // ReleasedImage is an image that has been released.
 type ReleasedImage struct {
-	// Source is the source reference of the image as given in Options.Images, without an explicit target.
+	// Source is the source reference of the image as given in Images of the options, without an explicit target.
 	Source string
 	// Reference is the full reference of the released image, e.g.
 	// "registry.cloudogu.com/official/dogu/v3/images/nexus:3.96.4".
@@ -32,7 +32,7 @@ type ReleasedImage struct {
 // The images pass through the release in phases, each a value of its own: parsed (imageSpec), resolved in the source
 // registry (resolvedImage) and checked against the target (checkedImage).
 
-// imageSpec is an image to release as given in Options.Images, with its target computed.
+// imageSpec is an image to release as given in Images of the options, with its target computed.
 type imageSpec struct {
 	source name.Tag
 	// targetName is the name of the image in the target, by default the last path segment of the source repository.
@@ -54,7 +54,7 @@ type checkedImage struct {
 	existingDigest string
 }
 
-// parseImages parses the images as given in Options.Images and computes their targets without accessing a registry.
+// parseImages parses the images as given in Images of the options and computes their targets without accessing a registry.
 func parseImages(specs []string, target oci.Target) ([]imageSpec, error) {
 	images := make([]imageSpec, 0, len(specs))
 	sourceByTargetName := map[string]string{}
@@ -112,7 +112,7 @@ func parseImage(spec string, target oci.Target) (imageSpec, error) {
 	return imageSpec{source: sourceTag, targetName: targetName, target: targetTag}, nil
 }
 
-// parseImageKeys parses the image keys as given in Options.ImageKeys and returns the keys by target name.
+// parseImageKeys parses the image keys as given in ImageKeys of the options and returns the keys by target name.
 // Each image key must refer to the target name of one of the images.
 func parseImageKeys(specs []string, images []imageSpec) (map[string]string, error) {
 	if len(specs) > 0 && len(images) == 0 {

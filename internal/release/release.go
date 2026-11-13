@@ -8,13 +8,16 @@ import (
 	"log/slog"
 	"os"
 
+	helmchart "helm.sh/helm/v4/pkg/chart/v2"
+
+	"github.com/cloudogu/cldk/internal/build"
 	"github.com/cloudogu/cldk/internal/chart"
 	"github.com/cloudogu/cldk/internal/oci"
-	helmchart "helm.sh/helm/v4/pkg/chart/v2"
+	"github.com/cloudogu/cldk/internal/project"
 )
 
-// Options are the settings of a release besides the target.
-type Options struct {
+// ArchiveOptions are the settings of a release of a chart archive besides the target.
+type ArchiveOptions struct {
 	// Images are the images to release together with the chart, each given as "<source>" or "<source>=<target name>:<tag>",
 	// e.g. "ci-registry.example.com/nexus:3.96.4" or "localhost:5001/local-dev/nexus/main:3.96.4=nexus:3.96.4".
 	// Each image is copied to the image repository of the target with the given name and tag,
@@ -37,16 +40,19 @@ const (
 	StatusPushed Status = iota
 	// StatusSkipped means the target already has the image with the same digest, so that it is not pushed again.
 	StatusSkipped
-	// StatusOverwritten means the target already exists with other content and is overwritten (Options.Force).
+	// StatusOverwritten means the target already exists with other content and is overwritten (Force of the options).
 	StatusOverwritten
 	// StatusConflict means the target already exists with other content, so that it cannot be released without
-	// Options.Force. Only a Plan has it.
+	// Force of the options. Only a Plan has it.
 	StatusConflict
 )
 
-// Plan describes what a release would push, without pushing anything.
+// Plan describes what a release would build and push, without building or pushing anything.
 type Plan struct {
-	// Images are the planned images in the order of Options.Images.
+	// BuiltImages are the images of cldk.yaml that would be built and pushed, ordered by name.
+	// Only a release from the project directory has BuiltImages.
+	BuiltImages []BuiltImage
+	// Images are the planned images in the order of Images of the options.
 	Images []PlannedImage
 	// ChartReference is the full reference of the chart without scheme, e.g.
 	// "registry.cloudogu.com/official/dogu/v3/charts/nexus:1.2.3".
@@ -57,7 +63,7 @@ type Plan struct {
 
 // PlannedImage is an image as it would be released.
 type PlannedImage struct {
-	// Source is the source reference of the image as given in Options.Images, without an explicit target.
+	// Source is the source reference of the image as given in Images of the options, without an explicit target.
 	Source string
 	// Reference is the full reference of the image in the target, e.g.
 	// "registry.cloudogu.com/official/dogu/v3/images/nexus:3.96.4".
@@ -70,10 +76,16 @@ type PlannedImage struct {
 	Status Status
 }
 
-// Conflicts returns an error for each image and the chart that cannot be released without Options.Force,
+// Conflicts returns an error for each image and the chart that cannot be released without Force of the options,
 // or nil if there are none.
 func (p Plan) Conflicts() error {
 	var errs []error
+
+	for _, img := range p.BuiltImages {
+		if img.Status == StatusConflict {
+			errs = append(errs, fmt.Errorf("image %s is already released, use --force to overwrite it", img.Reference))
+		}
+	}
 
 	for _, img := range p.Images {
 		if img.Status == StatusConflict {
@@ -91,7 +103,10 @@ func (p Plan) Conflicts() error {
 
 // Result describes what has been released.
 type Result struct {
-	// Images are the released images in the order of Options.Images.
+	// BuiltImages are the built and released images of cldk.yaml, ordered by name.
+	// Only a release from the project directory has BuiltImages.
+	BuiltImages []BuiltImage
+	// Images are the released images in the order of Images of the options.
 	Images []ReleasedImage
 	// ChartReference is the full reference of the released chart without scheme, e.g.
 	// "registry.cloudogu.com/official/dogu/v3/charts/nexus:1.2.3".
@@ -103,16 +118,22 @@ type Result struct {
 }
 
 // Releaser publishes dogu releases.
-type Releaser struct{}
+type Releaser struct {
+	newBuilder func(binary string) Builder
+}
 
 // NewReleaser creates a Releaser.
 func NewReleaser() *Releaser {
-	return &Releaser{}
+	return &Releaser{
+		newBuilder: func(binary string) Builder {
+			return build.New(binary)
+		},
+	}
 }
 
 // Plan computes the release of the packed chart archive (.tgz) at chartPath to the target including all checks of the
 // sources and targets, but pushes nothing. Conflicts in the target are part of the plan, see Plan.Conflicts.
-func (r *Releaser) Plan(ctx context.Context, chartPath string, target oci.Target, opts Options) (Plan, error) {
+func (r *Releaser) Plan(ctx context.Context, chartPath string, target oci.Target, opts ArchiveOptions) (Plan, error) {
 	p, err := newReleasePlan(ctx, chartPath, target, opts)
 	if err != nil {
 		return Plan{}, err
@@ -126,7 +147,7 @@ func (r *Releaser) Plan(ctx context.Context, chartPath string, target oci.Target
 // never refers to missing images.
 // If a push fails, the result holds the images released before the failure and no ChartDigest, so that the caller
 // can report what already is in the target.
-func (r *Releaser) Release(ctx context.Context, chartPath string, target oci.Target, opts Options) (Result, error) {
+func (r *Releaser) Release(ctx context.Context, chartPath string, target oci.Target, opts ArchiveOptions) (Result, error) {
 	p, err := newReleasePlan(ctx, chartPath, target, opts)
 	if err != nil {
 		return Result{}, err
@@ -140,9 +161,17 @@ func (r *Releaser) Release(ctx context.Context, chartPath string, target oci.Tar
 	return p.push(ctx)
 }
 
-// releasePlan is a computed release with everything needed to push it.
+// releasePlan is a computed release with everything needed to build and push it.
 type releasePlan struct {
 	client *oci.Client
+	// builder builds and pushes the built images; nil without images to build.
+	builder project.Builder
+	// builderBinary is the build CLI of the builder.
+	builderBinary string
+	// registry is the target registry.
+	registry string
+	// built are the images of cldk.yaml to build, ordered by name.
+	built  []checkedBuild
 	images []checkedImage
 	// archive is the chart archive to push, rewritten to the targets of the images.
 	archive     []byte
@@ -151,7 +180,7 @@ type releasePlan struct {
 }
 
 // newReleasePlan reads and rewrites the chart, resolves the images and checks all targets without pushing anything.
-func newReleasePlan(ctx context.Context, chartPath string, target oci.Target, opts Options) (*releasePlan, error) {
+func newReleasePlan(ctx context.Context, chartPath string, target oci.Target, opts ArchiveOptions) (*releasePlan, error) {
 	archive, err := os.ReadFile(chartPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read chart: %w", err)
@@ -189,42 +218,59 @@ func newReleasePlan(ctx context.Context, chartPath string, target oci.Target, op
 		return nil, err
 	}
 
-	ref := target.ChartRepository(c.Metadata.Name) + ":" + c.Metadata.Version
-
-	images, err := checkImages(ctx, client, resolved, opts.Force)
+	p, err := checkTargets(ctx, client, resolved, target.ChartRepository(c.Metadata.Name)+":"+c.Metadata.Version, opts.Force)
 	if err != nil {
 		return nil, err
 	}
 
-	chartStatus, err := checkChart(ctx, client, ref, opts.Force)
+	p.archive = archive
+
+	return p, nil
+}
+
+// checkTargets checks the targets of the copied images and of the chart and returns the plan.
+func checkTargets(ctx context.Context, client *oci.Client, resolved []resolvedImage, chartRef string, force bool) (*releasePlan, error) {
+	images, err := checkImages(ctx, client, resolved, force)
 	if err != nil {
 		return nil, err
 	}
 
-	return &releasePlan{
-		client:      client,
-		images:      images,
-		archive:     archive,
-		chartRef:    ref,
-		chartStatus: chartStatus,
-	}, nil
+	chartStatus, err := checkChart(ctx, client, chartRef, force)
+	if err != nil {
+		return nil, err
+	}
+
+	return &releasePlan{client: client, images: images, chartRef: chartRef, chartStatus: chartStatus}, nil
 }
 
 // summary returns the plan as seen from outside.
 func (p *releasePlan) summary() Plan {
+	var built []BuiltImage
+
+	for _, img := range p.built {
+		built = append(built, img.planned())
+	}
+
 	planned := make([]PlannedImage, 0, len(p.images))
 
 	for _, img := range p.images {
 		planned = append(planned, img.planned())
 	}
 
-	return Plan{Images: planned, ChartReference: p.chartRef, ChartStatus: p.chartStatus}
+	return Plan{BuiltImages: built, Images: planned, ChartReference: p.chartRef, ChartStatus: p.chartStatus}
 }
 
-// push pushes the images in their order and then the chart.
+// push builds and pushes the images to build, copies the other images in their order and then pushes the chart.
 // If a push fails, it returns the error together with what has been released before.
 func (p *releasePlan) push(ctx context.Context) (Result, error) {
 	result := Result{ChartReference: p.chartRef, ChartStatus: p.chartStatus}
+
+	var err error
+
+	result.BuiltImages, err = p.buildAndPushImages(ctx)
+	if err != nil {
+		return result, err
+	}
 
 	for _, img := range p.images {
 		released, err := pushCheckedImage(ctx, p.client, img)
@@ -255,13 +301,8 @@ func rewriteChartForImages(c *helmchart.Chart, images []imageSpec, keys map[stri
 		targets[img.targetName] = img.target.String()
 	}
 
-	changes, err := chart.RewriteImages(c, targets, keys)
-	if err != nil {
+	if err := project.RewriteImages(c, targets, keys); err != nil {
 		return nil, err
-	}
-
-	for _, change := range changes {
-		slog.Debug("rewriting image of chart", "key", change.Key, "old", change.Old, "new", change.New)
 	}
 
 	return chart.Pack(c)

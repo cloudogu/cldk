@@ -145,11 +145,17 @@ var _ Releaser = &MockReleaser{}
 //
 //		// make and configure a mocked Releaser
 //		mockedReleaser := &MockReleaser{
-//			PlanFunc: func(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Plan, error) {
+//			PlanFunc: func(ctx context.Context, chartPath string, target oci.Target, opts release.ArchiveOptions) (release.Plan, error) {
 //				panic("mock out the Plan method")
 //			},
-//			ReleaseFunc: func(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Result, error) {
+//			PlanProjectFunc: func(ctx context.Context, target oci.Target, opts release.ProjectOptions) (release.Plan, error) {
+//				panic("mock out the PlanProject method")
+//			},
+//			ReleaseFunc: func(ctx context.Context, chartPath string, target oci.Target, opts release.ArchiveOptions) (release.Result, error) {
 //				panic("mock out the Release method")
+//			},
+//			ReleaseProjectFunc: func(ctx context.Context, target oci.Target, opts release.ProjectOptions) (release.Result, error) {
+//				panic("mock out the ReleaseProject method")
 //			},
 //		}
 //
@@ -159,10 +165,16 @@ var _ Releaser = &MockReleaser{}
 //	}
 type MockReleaser struct {
 	// PlanFunc mocks the Plan method.
-	PlanFunc func(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Plan, error)
+	PlanFunc func(ctx context.Context, chartPath string, target oci.Target, opts release.ArchiveOptions) (release.Plan, error)
+
+	// PlanProjectFunc mocks the PlanProject method.
+	PlanProjectFunc func(ctx context.Context, target oci.Target, opts release.ProjectOptions) (release.Plan, error)
 
 	// ReleaseFunc mocks the Release method.
-	ReleaseFunc func(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Result, error)
+	ReleaseFunc func(ctx context.Context, chartPath string, target oci.Target, opts release.ArchiveOptions) (release.Result, error)
+
+	// ReleaseProjectFunc mocks the ReleaseProject method.
+	ReleaseProjectFunc func(ctx context.Context, target oci.Target, opts release.ProjectOptions) (release.Result, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -175,7 +187,16 @@ type MockReleaser struct {
 			// Target is the target argument value.
 			Target oci.Target
 			// Opts is the opts argument value.
-			Opts release.Options
+			Opts release.ArchiveOptions
+		}
+		// PlanProject holds details about calls to the PlanProject method.
+		PlanProject []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Target is the target argument value.
+			Target oci.Target
+			// Opts is the opts argument value.
+			Opts release.ProjectOptions
 		}
 		// Release holds details about calls to the Release method.
 		Release []struct {
@@ -186,15 +207,26 @@ type MockReleaser struct {
 			// Target is the target argument value.
 			Target oci.Target
 			// Opts is the opts argument value.
-			Opts release.Options
+			Opts release.ArchiveOptions
+		}
+		// ReleaseProject holds details about calls to the ReleaseProject method.
+		ReleaseProject []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Target is the target argument value.
+			Target oci.Target
+			// Opts is the opts argument value.
+			Opts release.ProjectOptions
 		}
 	}
-	lockPlan    sync.RWMutex
-	lockRelease sync.RWMutex
+	lockPlan           sync.RWMutex
+	lockPlanProject    sync.RWMutex
+	lockRelease        sync.RWMutex
+	lockReleaseProject sync.RWMutex
 }
 
 // Plan calls PlanFunc.
-func (mock *MockReleaser) Plan(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Plan, error) {
+func (mock *MockReleaser) Plan(ctx context.Context, chartPath string, target oci.Target, opts release.ArchiveOptions) (release.Plan, error) {
 	if mock.PlanFunc == nil {
 		panic("MockReleaser.PlanFunc: method is nil but Releaser.Plan was just called")
 	}
@@ -202,7 +234,7 @@ func (mock *MockReleaser) Plan(ctx context.Context, chartPath string, target oci
 		Ctx       context.Context
 		ChartPath string
 		Target    oci.Target
-		Opts      release.Options
+		Opts      release.ArchiveOptions
 	}{
 		Ctx:       ctx,
 		ChartPath: chartPath,
@@ -223,13 +255,13 @@ func (mock *MockReleaser) PlanCalls() []struct {
 	Ctx       context.Context
 	ChartPath string
 	Target    oci.Target
-	Opts      release.Options
+	Opts      release.ArchiveOptions
 } {
 	var calls []struct {
 		Ctx       context.Context
 		ChartPath string
 		Target    oci.Target
-		Opts      release.Options
+		Opts      release.ArchiveOptions
 	}
 	mock.lockPlan.RLock()
 	calls = mock.calls.Plan
@@ -237,8 +269,48 @@ func (mock *MockReleaser) PlanCalls() []struct {
 	return calls
 }
 
+// PlanProject calls PlanProjectFunc.
+func (mock *MockReleaser) PlanProject(ctx context.Context, target oci.Target, opts release.ProjectOptions) (release.Plan, error) {
+	if mock.PlanProjectFunc == nil {
+		panic("MockReleaser.PlanProjectFunc: method is nil but Releaser.PlanProject was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Target oci.Target
+		Opts   release.ProjectOptions
+	}{
+		Ctx:    ctx,
+		Target: target,
+		Opts:   opts,
+	}
+	mock.lockPlanProject.Lock()
+	mock.calls.PlanProject = append(mock.calls.PlanProject, callInfo)
+	mock.lockPlanProject.Unlock()
+	return mock.PlanProjectFunc(ctx, target, opts)
+}
+
+// PlanProjectCalls gets all the calls that were made to PlanProject.
+// Check the length with:
+//
+//	len(mockedReleaser.PlanProjectCalls())
+func (mock *MockReleaser) PlanProjectCalls() []struct {
+	Ctx    context.Context
+	Target oci.Target
+	Opts   release.ProjectOptions
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Target oci.Target
+		Opts   release.ProjectOptions
+	}
+	mock.lockPlanProject.RLock()
+	calls = mock.calls.PlanProject
+	mock.lockPlanProject.RUnlock()
+	return calls
+}
+
 // Release calls ReleaseFunc.
-func (mock *MockReleaser) Release(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Result, error) {
+func (mock *MockReleaser) Release(ctx context.Context, chartPath string, target oci.Target, opts release.ArchiveOptions) (release.Result, error) {
 	if mock.ReleaseFunc == nil {
 		panic("MockReleaser.ReleaseFunc: method is nil but Releaser.Release was just called")
 	}
@@ -246,7 +318,7 @@ func (mock *MockReleaser) Release(ctx context.Context, chartPath string, target 
 		Ctx       context.Context
 		ChartPath string
 		Target    oci.Target
-		Opts      release.Options
+		Opts      release.ArchiveOptions
 	}{
 		Ctx:       ctx,
 		ChartPath: chartPath,
@@ -267,16 +339,56 @@ func (mock *MockReleaser) ReleaseCalls() []struct {
 	Ctx       context.Context
 	ChartPath string
 	Target    oci.Target
-	Opts      release.Options
+	Opts      release.ArchiveOptions
 } {
 	var calls []struct {
 		Ctx       context.Context
 		ChartPath string
 		Target    oci.Target
-		Opts      release.Options
+		Opts      release.ArchiveOptions
 	}
 	mock.lockRelease.RLock()
 	calls = mock.calls.Release
 	mock.lockRelease.RUnlock()
+	return calls
+}
+
+// ReleaseProject calls ReleaseProjectFunc.
+func (mock *MockReleaser) ReleaseProject(ctx context.Context, target oci.Target, opts release.ProjectOptions) (release.Result, error) {
+	if mock.ReleaseProjectFunc == nil {
+		panic("MockReleaser.ReleaseProjectFunc: method is nil but Releaser.ReleaseProject was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Target oci.Target
+		Opts   release.ProjectOptions
+	}{
+		Ctx:    ctx,
+		Target: target,
+		Opts:   opts,
+	}
+	mock.lockReleaseProject.Lock()
+	mock.calls.ReleaseProject = append(mock.calls.ReleaseProject, callInfo)
+	mock.lockReleaseProject.Unlock()
+	return mock.ReleaseProjectFunc(ctx, target, opts)
+}
+
+// ReleaseProjectCalls gets all the calls that were made to ReleaseProject.
+// Check the length with:
+//
+//	len(mockedReleaser.ReleaseProjectCalls())
+func (mock *MockReleaser) ReleaseProjectCalls() []struct {
+	Ctx    context.Context
+	Target oci.Target
+	Opts   release.ProjectOptions
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Target oci.Target
+		Opts   release.ProjectOptions
+	}
+	mock.lockReleaseProject.RLock()
+	calls = mock.calls.ReleaseProject
+	mock.lockReleaseProject.RUnlock()
 	return calls
 }

@@ -1,16 +1,131 @@
 # Releasing a dogu with `cldk dogu release`
 
-`cldk dogu release` publishes a packed chart of a dogu v3 and optionally its images to a registry.
-The images are copied unchanged with the same digest, the chart gets the new image references.
+`cldk dogu release` publishes a dogu v3, its chart and its images, to a namespace of a registry.
+It has two modes:
 
-This guide shows two examples with the Nexus dogu, both with `registry.cloudogu.com` and the namespace `testing`:
+- **Project release** (without argument): `cldk` builds the images of the dogu repository and releases them together with the chart of the repository.
+- **Archive release** (with a `.tgz` argument): `cldk` releases a packed chart; images are copied unchanged from other registries.
 
-- [Example 1](#example-1-chart-without-images): release the chart only
-- [Example 2](#example-2-chart-with-image): release the chart together with the Nexus image
+This guide shows examples with the Nexus dogu, all with `registry.cloudogu.com` and the namespace `testing`:
+
+- [Example 1](#example-1-project-release): release the dogu from its repository
+- [Example 2](#example-2-project-release-with-an-image-from-the-ci): release the dogu with an image built in the CI
+- [Example 3](#example-3-chart-without-images): release a packed chart only
+- [Example 4](#example-4-chart-with-image): release a packed chart together with the Nexus image
 
 All options are described in the [README](../../README.md#dogu-release).
 
-## How it works
+## Project release
+
+### How it works
+
+1. `cldk` reads `cldk.yaml` and the chart directory of the project directory (`--dir`, default the working directory).
+2. It checks the release tags, the builder and the chart: the chart is rewritten to the released images via its `mirror-patch-tpl.yaml` and linted.
+3. It checks all targets: an existing release tag or chart version aborts the release, see [Existing artifacts](#existing-artifacts-of-a-project-release).
+4. It builds all images of `cldk.yaml` with the builder (`docker` by default), then pushes them to `<reg>/<namespace>/dogu/v3/images/<name>:<release tag>`.
+5. It copies the images given with `-i`.
+6. It pushes the chart to `oci://<reg>/<namespace>/dogu/v3/charts/<name>:<version>` with the `version` of `Chart.yaml`.
+
+Nothing is built before all checks pass, and a failed build leaves nothing in the registry.
+The project directory is not changed.
+
+### Release tags in `cldk.yaml`
+
+Each image to build needs a release tag, the tag it is released with:
+
+```yaml
+namespace: official
+images:
+  nexus:
+    tag: 3.96.4-1
+  sidecar:
+    dockerfile: sidecar/Dockerfile
+    key: nexusSaManager
+    tag: 1.2.0
+```
+
+`--tag <name>=<tag>` overrides the tag of `cldk.yaml`, e.g. in the CI or for a testing release:
+
+```shell
+cldk dogu release --namespace testing --tag nexus=3.96.4-1-rc.1
+```
+
+Without a release tag for an image, `cldk` aborts before the first build and names all images without one.
+The release tags are independent of the chart version, which is always the `version` of `Chart.yaml`.
+
+The namespace comes from `cldk.yaml`; `--namespace` or `CLDK_NAMESPACE` override it.
+
+### Builder and credentials
+
+The builder builds and pushes the images with its own login, `cldk` does not log in for it:
+
+```shell
+docker login registry.cloudogu.com
+```
+
+`--user`/`--pass` and `CLDK_USER`/`CLDK_PASSWORD` apply to everything `cldk` itself does: checking the targets, reading the digests of the pushed images, copying `-i` images and pushing the chart.
+Choose the builder with `--builder` or `CLDK_BUILDER`, e.g. `podman`; `--platform`/`CLDK_PLATFORM`, `--no-cache`/`CLDK_NO_CACHE` and `--build-arg` work like in `cldk dogu dev-push`.
+
+### Example 1: Project release
+
+```shell
+cd nexus
+cldk dogu release --dry-run --namespace testing
+```
+
+```
+Dry run, nothing has been pushed.
+Would build image nexus -> registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-1
+Would build image sidecar -> registry.cloudogu.com/testing/dogu/v3/images/sidecar:1.2.0
+Would release chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3
+```
+
+```shell
+cldk dogu release --namespace testing
+```
+
+```
+Released image nexus -> registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-1@sha256:…
+Released image sidecar -> registry.cloudogu.com/testing/dogu/v3/images/sidecar:1.2.0@sha256:…
+Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3@sha256:…
+```
+
+The chart gets the released images in the entries of `values.images` of its `mirror-patch-tpl.yaml`: `nexus` by its repository name, `sidecar` by its `key` `nexusSaManager`.
+
+### Example 2: Project release with an image from the CI
+
+An image given with `-i` is copied instead of built, if its target name is an image of `cldk.yaml`; it keeps the `key` of `cldk.yaml`.
+The other images of `cldk.yaml` are built:
+
+```shell
+cldk dogu release --namespace testing -i ci-registry.example.com/nexus/sidecar:1.2.0
+```
+
+```
+Released image nexus -> registry.cloudogu.com/testing/dogu/v3/images/nexus:3.96.4-1@sha256:…
+Released image ci-registry.example.com/nexus/sidecar:1.2.0 -> registry.cloudogu.com/testing/dogu/v3/images/sidecar:1.2.0@sha256:…
+Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3@sha256:…
+```
+
+An `-i` image without counterpart in `cldk.yaml` is released additionally, like in an archive release.
+`--image-key` applies to `-i` images only and overrides the `key` of `cldk.yaml` for a replacing `-i` image; built images always take the `key` of `cldk.yaml`.
+If all images are given with `-i`, no builder is needed.
+
+### Existing artifacts of a project release
+
+| Target already exists        | Behavior                                                          |
+|------------------------------|-------------------------------------------------------------------|
+| Release tag of a built image | abort before the first build                                      |
+| Image tag of an `-i` image   | like in an archive release, see [Existing artifacts](#existing-artifacts) |
+| Chart version                | abort before the first build                                      |
+
+A built image is never skipped, because its digest is only known after the build.
+With `--force`, existing release tags and the chart version are overwritten on purpose.
+If a push fails, `cldk` prints the images released before the failure; the chart is not released.
+
+## Archive release
+
+### How it works
 
 1. `cldk` reads the name and version from the `Chart.yaml` of the packed chart.
 2. Each image given with `-i` is resolved in its source registry and copied to `<reg>/<namespace>/dogu/v3/images/<name>:<tag>`.
@@ -20,11 +135,11 @@ All options are described in the [README](../../README.md#dogu-release).
 `cldk` checks all targets before the first push.
 Released artifacts are never overwritten silently, see [Existing artifacts](#existing-artifacts).
 
-## Prerequisites
+### Prerequisites
 
-### Packed chart
+#### Packed chart
 
-`cldk dogu release` takes the chart as `.tgz`, as created by `helm package`:
+An archive release takes the chart as `.tgz`, as created by `helm package`:
 
 ```shell
 helm package k8s/helm -d target
@@ -34,9 +149,9 @@ helm package k8s/helm -d target
 The `version` in `Chart.yaml` is the released chart version, e.g. `1.2.3`.
 It is independent of the version of the application and the tags of its images, e.g. `3.96.4` for Nexus.
 
-### Images in a registry
+#### Images in a registry
 
-`cldk dogu release` only reads images from registries, never from the local docker daemon.
+An archive release only reads images from registries, never from the local docker daemon.
 So push a locally built image to a registry first, e.g. to the registry of the CI:
 
 ```shell
@@ -60,7 +175,7 @@ values:
 
 Only the entries of the images given with `-i` change; all others stay as they are.
 
-### Credentials
+#### Credentials
 
 For the target registry, `cldk` uses the stored credentials of `helm registry login` or `docker login`:
 
@@ -74,7 +189,7 @@ The source images are always read with the credentials of `docker login`.
 
 The credentials need write access to the target namespace, `testing` in the examples.
 
-## Example 1: Chart without images
+### Example 3: Chart without images
 
 The chart is released as it is; its image references keep pointing to the entries of `values.yaml`.
 
@@ -98,7 +213,7 @@ Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3@sh
 `--namespace` is required, so that nothing ends up in `official` by accident.
 `--reg` is not needed, `registry.cloudogu.com` is the default.
 
-## Example 2: Chart with image
+### Example 4: Chart with image
 
 The Nexus image of the CI registry is released together with the chart:
 
@@ -133,7 +248,7 @@ The image keeps the name and tag of its source: the name is the last path segmen
 It goes to the entry of `values.images` with the same repository name, here `nexus`.
 The chart is released under its own version `1.2.3`.
 
-### Setting name, tag and entry explicitly
+#### Setting name, tag and entry explicitly
 
 If the name or tag of the source does not fit, set them explicitly with `=<name>:<tag>`:
 
@@ -152,7 +267,7 @@ cldk dogu release --namespace testing \
   target/nexus-1.2.3.tgz
 ```
 
-## Existing artifacts
+### Existing artifacts
 
 `cldk` checks all targets before the first push:
 
@@ -190,3 +305,6 @@ docker buildx imagetools inspect registry.cloudogu.com/testing/dogu/v3/images/ne
 | The chart is rejected with images                                    | The chart has no `mirror-patch-tpl.yaml`.                                                                                        |
 | An image fits no or several entries of `values.images`               | Assign the entry with `--image-key <name>=<key>`.                                                                                |
 | The target registry rejects the login                                | Run `docker login registry.cloudogu.com` or set `CLDK_USER`/`CLDK_PASSWORD`; the credentials need write access to the namespace. |
+| The project release aborts with "no release tag for the images …"    | Set `tag:` of the images in `cldk.yaml` or give `--tag <name>=<tag>`.                                                            |
+| The push of a built image fails                                      | The builder pushes with its own login: run `<builder> login <registry>`, e.g. `docker login registry.cloudogu.com`.              |
+| `--tag` or `--builder` is rejected with a `.tgz`                     | These flags only apply to a project release; an archive release copies images with `-i`.                                         |

@@ -51,6 +51,9 @@ type Image struct {
 	Target string `yaml:"target,omitempty"`
 	// BuildArgs are static build arguments.
 	BuildArgs map[string]string `yaml:"buildArgs,omitempty"`
+	// Tag is the release tag of the image, the tag a release from the project directory pushes the built image with, e.g. "3.96.4-1".
+	// Optional, dev-push ignores it.
+	Tag string `yaml:"tag,omitempty"`
 }
 
 // Load reads the project file in the project directory, validates it and applies the defaults.
@@ -96,7 +99,7 @@ func parse(content []byte) (ProjectFile, error) {
 	return file, nil
 }
 
-// validate checks the required fields and the image names.
+// validate checks the required fields, the image names and their tags.
 func (f *ProjectFile) validate() error {
 	if f.Namespace == "" {
 		return errors.New("namespace is required")
@@ -105,6 +108,12 @@ func (f *ProjectFile) validate() error {
 	for _, imageName := range slices.Sorted(maps.Keys(f.Images)) {
 		if err := oci.ValidateImageName(imageName); err != nil {
 			return err
+		}
+
+		if tag := f.Images[imageName].Tag; tag != "" {
+			if err := oci.ValidateTag(tag); err != nil {
+				return fmt.Errorf("image %s: %w", imageName, err)
+			}
 		}
 	}
 

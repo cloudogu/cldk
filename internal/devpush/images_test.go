@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cloudogu/cldk/internal/build"
+	"github.com/cloudogu/cldk/internal/project"
 )
 
 // twoImagesYAML is a project file with two images, one with a custom build and one with the defaults.
@@ -36,16 +37,18 @@ func TestPush_images(t *testing.T) {
 		chartRef   = reg + "/official/dogu/v3/charts/nexus:" + wantDevVersion
 	)
 
-	t.Run("builds and pushes each image by name before pushing the chart and applying the dogu", func(t *testing.T) {
+	t.Run("builds all images by name, then pushes them before pushing the chart and applying the dogu", func(t *testing.T) {
 		pusher := newMockedPusher()
 		dir := writeProject(t, twoImagesYAML, nil)
 
-		result, err := pusher.Push(context.Background(), Options{Dir: dir, Registry: reg, ClusterRegistry: clusterReg, Builder: "podman"})
+		result, err := pusher.Push(context.Background(), Options{
+			Dir: dir, Registry: reg, ClusterRegistry: clusterReg, Build: project.BuildOptions{Builder: "podman"},
+		})
 
 		require.NoError(t, err)
 		assert.Equal(t, []string{
-			"build " + nexusRef, "push " + nexusRef,
-			"build " + sidecarRef, "push " + sidecarRef,
+			"build " + nexusRef, "build " + sidecarRef,
+			"push " + nexusRef, "push " + sidecarRef,
 			"push " + chartRef, "apply nexus",
 		}, pusher.steps)
 		assert.Equal(t, []string{"podman"}, pusher.builderBinaries)
@@ -53,12 +56,13 @@ func TestPush_images(t *testing.T) {
 		assert.Equal(t, []PushedImage{{Name: "nexus", Reference: nexusRef}, {Name: "sidecar", Reference: sidecarRef}}, result.Images)
 	})
 
-	t.Run("builds with the paths relative to the project directory and the merged build arguments", func(t *testing.T) {
+	t.Run("builds with the build settings of the options", func(t *testing.T) {
 		pusher := newMockedPusher()
 		dir := writeProject(t, twoImagesYAML, nil)
 
 		_, err := pusher.Push(context.Background(), Options{
-			Dir: dir, Registry: reg, Platform: "linux/arm64", NoCache: true, BuildArgs: []string{"FOO=override", "HTTP_PROXY"},
+			Dir: dir, Registry: reg,
+			Build: project.BuildOptions{Platform: "linux/arm64", NoCache: true, BuildArgs: []string{"FOO=override", "HTTP_PROXY"}},
 		})
 
 		require.NoError(t, err)
@@ -71,15 +75,16 @@ func TestPush_images(t *testing.T) {
 			Platform:   "linux/arm64",
 			NoCache:    true,
 		}, pusher.builder.BuildCalls()[0].Req)
-		assert.Equal(t, build.BuildRequest{
-			Context:    filepath.Join(dir, "sidecar"),
-			Dockerfile: filepath.Join(dir, "build", "Dockerfile.sidecar"),
-			Tag:        sidecarRef,
-			Target:     "runtime",
-			BuildArgs:  []string{"BAZ=qux", "FOO=override", "HTTP_PROXY"},
-			Platform:   "linux/arm64",
-			NoCache:    true,
-		}, pusher.builder.BuildCalls()[1].Req)
+	})
+
+	t.Run("tags the images with the dev version and ignores the release tags of cldk.yaml", func(t *testing.T) {
+		pusher := newMockedPusher()
+		dir := writeProject(t, "namespace: official\nimages:\n  nexus:\n    tag: 3.96.4-1\n", nil)
+
+		result, err := pusher.Push(context.Background(), Options{Dir: dir, Registry: reg})
+
+		require.NoError(t, err)
+		assert.Equal(t, []PushedImage{{Name: "nexus", Reference: nexusRef}}, result.Images)
 	})
 
 	t.Run("does not check the builder without images", func(t *testing.T) {
@@ -101,7 +106,7 @@ func TestPush_images(t *testing.T) {
 		}
 		dir := writeProject(t, twoImagesYAML, nil)
 
-		_, err := pusher.Push(context.Background(), Options{Dir: dir, Registry: reg, Builder: "docker"})
+		_, err := pusher.Push(context.Background(), Options{Dir: dir, Registry: reg, Build: project.BuildOptions{Builder: "docker"}})
 
 		require.ErrorContains(t, err, `builder "docker" not found`)
 		assert.Empty(t, pusher.kubeOptions)
@@ -154,7 +159,7 @@ func TestPush_images(t *testing.T) {
 		})
 	}
 
-	t.Run("aborts on the first failed build and names the image", func(t *testing.T) {
+	t.Run("aborts on the first failed build without pushing anything and names the image", func(t *testing.T) {
 		pusher := newMockedPusher()
 		pusher.builder.BuildFunc = func(_ context.Context, req build.BuildRequest) error {
 			pusher.steps = append(pusher.steps, "build "+req.Tag)
@@ -169,7 +174,7 @@ func TestPush_images(t *testing.T) {
 		assert.Equal(t, []string{"build " + nexusRef}, pusher.steps)
 	})
 
-	t.Run("aborts on the first failed image push and names the image", func(t *testing.T) {
+	t.Run("aborts on the first failed image push after building all images and names the image", func(t *testing.T) {
 		pusher := newMockedPusher()
 		pusher.builder.PushFunc = func(_ context.Context, ref string) error {
 			pusher.steps = append(pusher.steps, "push "+ref)
@@ -181,7 +186,7 @@ func TestPush_images(t *testing.T) {
 		_, err := pusher.Push(context.Background(), Options{Dir: dir, Registry: reg})
 
 		require.ErrorContains(t, err, "failed to push image nexus: push failed with exit code 1 of docker")
-		assert.Equal(t, []string{"build " + nexusRef, "push " + nexusRef}, pusher.steps)
+		assert.Equal(t, []string{"build " + nexusRef, "build " + sidecarRef, "push " + nexusRef}, pusher.steps)
 	})
 
 	t.Run("pushes the chart with the built images on the cluster address and keeps the other images", func(t *testing.T) {

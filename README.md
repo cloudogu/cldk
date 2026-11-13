@@ -15,14 +15,16 @@ The chart refers to its images in `values.images` of its `mirror-patch-tpl.yaml`
 
 `cldk` has two commands for this:
 
-| Command              | Use                          | What it does                                                                                                                              |
-|----------------------|------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| `cldk dogu release`  | Releasing, e.g. in the CI    | Copies existing images unchanged to the registry and publishes the packed chart with their references.                                    |
-| `cldk dogu dev-push` | Developing against a cluster | Builds the images of the repository, pushes them and the chart under a new dev version and installs this version in a Kubernetes cluster. |
+| Command              | Use                          | What it does                                                                                                                                     |
+|----------------------|------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| `cldk dogu release`  | Releasing, e.g. in the CI    | Builds the images of the repository with their release tags, or copies existing images unchanged, and publishes the chart with their references. |
+| `cldk dogu dev-push` | Developing against a cluster | Builds the images of the repository, pushes them and the chart under a new dev version and installs this version in a Kubernetes cluster.        |
 
 ## Usage
 
 ```shell
+cldk dogu release   # release the dogu v3 in the working directory to registry.cloudogu.com, building its images
+cldk dogu release --dry-run   # print the plan of the release without building or pushing anything
 cldk dogu release --namespace <ns> <chart.tgz>   # release a packed dogu chart to registry.cloudogu.com
 cldk dogu release --namespace <ns> -i <image> ... <chart.tgz>   # release the chart together with its images
 cldk dogu release --dry-run --namespace <ns> -i <image> ... <chart.tgz>   # print the plan without pushing anything
@@ -38,12 +40,52 @@ cldk dogu release --help   # show the options of a command
 
 See [Releasing a dogu with `cldk dogu release`](docs/operations/releasing_a_dogu_en.md) ([Deutsch](docs/operations/releasing_a_dogu_de.md)) for examples with `registry.cloudogu.com`.
 
+`dogu release` has two modes:
+
+| Mode            | Invocation                      | Images                                                                     |
+|-----------------|---------------------------------|----------------------------------------------------------------------------|
+| Project release | `cldk dogu release`             | built from the project directory with their release tags, or copied (`-i`) |
+| Archive release | `cldk dogu release <chart.tgz>` | copied from other registries (`-i`)                                        |
+
+#### Project release
+
+Without argument, `dogu release` releases the dogu in the project directory (`--dir`, default the working directory):
+
+```shell
+cldk dogu release
+```
+
+- It reads `cldk.yaml` (see [`dogu dev-push`](#dogu-dev-push)) and the chart directory.
+- Each image of `cldk.yaml` is built with the builder and pushed to `<reg>/<namespace>/dogu/v3/images/<name>:<release tag>`.
+  - The release tag is `tag:` of the image in `cldk.yaml`, overridden with `--tag <name>=<tag>` (repeatable).
+  - Without a release tag for an image, the release aborts before the first build and names all images without one.
+- The chart is rewritten to the released images via `mirror-patch-tpl.yaml`, using `key` of `cldk.yaml`, linted and pushed with the unchanged `version` of `Chart.yaml`.
+- The namespace defaults to `namespace` of `cldk.yaml`.
+- Order: check everything, build all images, push all built images, copy the `-i` images, push the chart.
+  - A failed build leaves nothing in the target registry.
+  - Built images are pushed by the builder with its own login, e.g. `docker login registry.cloudogu.com`; `--user`/`--pass` apply to everything else.
+- An existing release tag or chart version is a conflict before the first build; `--force` overwrites both.
+  Built images are never skipped, because their digest is unknown before the build.
+- `-i <image>` copies an image instead of building it if its target name is an image of `cldk.yaml`; it keeps the `key` of `cldk.yaml` unless `--image-key` assigns another.
+  `-i` images without counterpart are released additionally; with only `-i` images, no builder is needed.
+- `--builder`, `--platform`, `--no-cache` and `--build-arg` work like in [`dogu dev-push`](#building-images).
+- `--dry-run` checks `cldk.yaml`, the release tags, the builder, the lint, the `-i` sources and all targets and prints the plan, but builds and pushes nothing:
+
+  ```text
+  Dry run, nothing has been pushed.
+  Would build image nexus -> registry.cloudogu.com/official/dogu/v3/images/nexus:3.96.4-1
+  Would release chart oci://registry.cloudogu.com/official/dogu/v3/charts/nexus:1.2.3
+  ```
+
+#### Archive release
+
 Pass a packed Dogu Helm chart and specify the required target namespace with `--namespace <ns>`:
 
 ```shell
 cldk dogu release --namespace <ns> <chart.tgz>
 ```
 
+`--tag`, `--builder`, `--platform`, `--no-cache` and `--build-arg` are rejected with a chart archive; their environment variables are ignored.
 By default, the chart is published to `registry.cloudogu.com`.
 Its name and version are read from `Chart.yaml`, resulting in this target:
 
@@ -51,7 +93,7 @@ Its name and version are read from `Chart.yaml`, resulting in this target:
 oci://<reg>/<ns>/dogu/v3/charts/<name>:<version>
 ```
 
-#### `--image`, `-i`: Include container images
+##### `--image`, `-i`: Include container images
 
 Use `--image <image>` (short form: `-i`) to include an image.
 Repeat the flag for each image to release with the chart:
@@ -94,7 +136,7 @@ All images are pushed before the chart.
 If a push fails, cldk prints the images released before the failure together with the error.
 Running the release again skips these images, because their tags already exist with the same digest.
 
-#### `--image-key`: Map images to chart values
+##### `--image-key`: Map images to chart values
 
 If no entry matches, or several entries match, assign the image explicitly with `--image-key <name>=<key>`.
 Here, `<name>` is the target image name and `<key>` is the entry under `values.images` in `mirror-patch-tpl.yaml`:
@@ -108,7 +150,7 @@ cldk dogu release --namespace <ns> \
 
 Repeat `--image-key` to map additional images.
 
-#### `--dry-run`: Preview a release
+##### `--dry-run`: Preview a release
 
 Add `--dry-run` to check the release without pushing anything:
 
@@ -122,7 +164,7 @@ A dry run resolves the images, rewrites the chart locally, and checks all target
 It prints each image's source, target, digest, and planned action (push, skip, overwrite, or conflict), as well as the chart target.
 Mapping errors and conflicts cause the dry run to fail.
 
-#### `--force`: Overwrite existing releases
+##### `--force`: Overwrite existing releases
 
 Use `--force` to overwrite conflicting image tags and already released chart versions, for example when testing releases:
 
@@ -139,7 +181,7 @@ Existing artifacts are handled as follows:
 | Image tag with a different digest | Abort the release.                                |
 | Chart with the same version       | Abort the release.                                |
 
-#### `--reg`: Set the target registry
+##### `--reg`: Set the target registry
 
 Use `--reg <registry>` to publish to a registry other than the default `registry.cloudogu.com`:
 
@@ -147,14 +189,14 @@ Use `--reg <registry>` to publish to a registry other than the default `registry
 cldk dogu release --namespace <ns> --reg registry.example.com <chart.tgz>
 ```
 
-#### `--plain-http` and `--insecure`: Configure registry transport
+##### `--plain-http` and `--insecure`: Configure registry transport
 
 | Flag           | Target registry connection                                                 |
 |----------------|----------------------------------------------------------------------------|
 | `--plain-http` | HTTP without TLS.                                                          |
 | `--insecure`   | TLS without certificate verification, e.g. with a self-signed certificate. |
 
-#### `--user` and `--pass`: Authenticate to the target registry
+##### `--user` and `--pass`: Authenticate to the target registry
 
 Supply both flags together to set the target registry credentials:
 
@@ -169,6 +211,23 @@ Target registry credentials are selected in this order:
 3. Stored credentials from `helm registry login` or `docker login`.
 
 Credentials are never persisted by cldk.
+
+#### Environment variables
+
+The settings of the target registry and of the builds can be given as flags or environment variables, also in the `.env` of the project directory; flags take precedence:
+
+| Flag                   | Environment variable        | Description                                                           |
+|------------------------|-----------------------------|-----------------------------------------------------------------------|
+| `--reg <host[:port]>`  | `CLDK_REG`                  | target registry, default `registry.cloudogu.com`                      |
+| `--namespace <ns>`     | `CLDK_NAMESPACE`            | target namespace; project release: default `namespace` of `cldk.yaml` |
+| `--plain-http`         | `CLDK_PLAIN_HTTP`           | target registry without TLS                                           |
+| `--insecure`           | `CLDK_INSECURE`             | target registry with an untrusted (e.g. self-signed) certificate      |
+| `--user`/`--pass`      | `CLDK_USER`/`CLDK_PASSWORD` | credentials of the target registry, only as a pair from one source    |
+| `--builder <bin>`      | `CLDK_BUILDER`              | project release: Docker compatible build CLI, default `docker`        |
+| `--platform <os/arch>` | `CLDK_PLATFORM`             | project release: platform the images are built for                    |
+| `--no-cache`           | `CLDK_NO_CACHE`             | project release: build without the cache of the builder               |
+
+`cldk -v` logs each resolved value with its source, the password masked; check it and the references of `--dry-run` before a release, so that a forgotten line in the `.env` does not redirect it.
 
 ### `dogu dev-push`
 
@@ -188,6 +247,7 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
       target: ""             # stage of a multi-stage build, optional
       buildArgs:             # static build arguments, optional
         FOO: bar
+      tag: 3.96.4-1          # release tag of dogu release, optional; dev-push ignores it
   ```
 
   All paths are relative to the project directory; `nexus: {}` is a valid image entry with all defaults.
@@ -211,9 +271,9 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
 | `--insecure`                   | `CLDK_DEV_INSECURE`       | dev registry with an untrusted (e.g. self-signed) certificate                          |
 | `--kube-context <name>`        | `CLDK_DEV_KUBE_CONTEXT`   | kubeconfig context of the cluster, default the current context                         |
 | `--kube-namespace <ns>`        | `CLDK_DEV_KUBE_NAMESPACE` | Kubernetes namespace of the dogu, default the namespace of the context, else `default` |
-| `--builder <bin>`              | `CLDK_DEV_BUILDER`        | Docker compatible build CLI, default `docker`                                          |
-| `--platform <os/arch>`         | `CLDK_DEV_PLATFORM`       | platform the images are built for, passed to the builder                               |
-| `--no-cache`                   | `CLDK_DEV_NO_CACHE`       | build the images without the cache of the builder, e.g. to enforce a clean build       |
+| `--builder <bin>`              | `CLDK_BUILDER`            | Docker compatible build CLI, default `docker`; shared with `release`                   |
+| `--platform <os/arch>`         | `CLDK_PLATFORM`           | platform the images are built for, passed to the builder; shared with `release`        |
+| `--no-cache`                   | `CLDK_NO_CACHE`           | build the images without the cache of the builder, e.g. to enforce a clean build       |
 | `--values <file>`              | `CLDK_DEV_VALUES`         | YAML file with Helm values for the dogu, relative to the project directory             |
 | `--build-arg KEY[=VALUE]`      |                           | build argument for all images, repeatable                                              |
 | `--replace-image <name>=<ref>` |                           | do not build the image `<name>`, write `<ref>` into the chart instead, repeatable      |
@@ -232,7 +292,7 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
 
 #### Building images
 
-- `dev-push` builds the images of `cldk.yaml` one after another, ordered by name, and pushes each right after its build:
+- `dev-push` builds the images of `cldk.yaml` one after another, ordered by name, and then pushes them in the same order:
   - `<builder> build -f <dockerfile> -t <reg>/<namespace>/dogu/v3/images/<name>:<dev-version> [--target …] [--build-arg …] [--platform …] [--no-cache] <context>`
   - `<builder> push <reg>/<namespace>/dogu/v3/images/<name>:<dev-version>`
 - The builder is any CLI with Docker compatible `build` and `push` commands, e.g. `docker` or `podman`.
@@ -244,7 +304,7 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
 - A copy of the chart gets the references of the built images on the cluster address of the dev registry, e.g. `k3d-registry-proxy.localhost:5000/official/dogu/v3/images/nexus:<dev-version>`.
   - `dev-push` renders `mirror-patch-tpl.yaml` with the new references and merges the patches into the chart.
   - The chart is rewritten and linted before the first build.
-- The first failed build or push aborts with the image name and the exit code of the builder; images pushed before stay in the dev registry.
+- The first failed build or push aborts with the image name and the exit code of the builder; a failed build pushes nothing, images pushed before a failed push stay in the dev registry.
 - Only the images of `cldk.yaml` are built; the other images of the chart stay unchanged without any flag.
 - Replace or skip single images of `cldk.yaml` for one run, e.g. to work on one image only:
 
@@ -297,7 +357,7 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
 - The project directory is the working directory or the one given with `--dir`/`-d`.
 - Variables that are already set in the environment, even if empty, take precedence over the `.env`; flags take precedence over both.
 - A missing `.env` is fine, a `.env` that cannot be parsed aborts the command.
-- `cldk -v` logs the names of the variables taken from the `.env`, never their values; only `dev-push` logs the resolved values of its own settings.
+- `cldk -v` logs the names of the variables taken from the `.env`, never their values; `release` and `dev-push` log the resolved values of their own settings with their source, never a password.
 
 ## Building
 

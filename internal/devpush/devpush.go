@@ -12,6 +12,7 @@ import (
 	"github.com/cloudogu/cldk/internal/dogu"
 	"github.com/cloudogu/cldk/internal/kube"
 	"github.com/cloudogu/cldk/internal/oci"
+	"github.com/cloudogu/cldk/internal/project"
 )
 
 // Options are the settings of a dev push, fully resolved from flags and environment.
@@ -30,15 +31,8 @@ type Options struct {
 	Insecure bool
 	// Kube selects the cluster and Kubernetes namespace the dogu is applied in.
 	Kube kube.Options
-	// Builder is the build CLI the images are built and pushed with, e.g. "docker".
-	Builder string
-	// Platform is the platform the images are built for, e.g. "linux/arm64". If empty, the builder chooses.
-	Platform string
-	// NoCache builds the images without the cache of the builder.
-	NoCache bool
-	// BuildArgs are build arguments for all images as "KEY=VALUE" or "KEY", which takes the value from the
-	// environment. They override the build arguments of the same key in cldk.yaml.
-	BuildArgs []string
+	// Build are the settings of the builds of the images.
+	Build project.BuildOptions
 	// ReplaceImages are images of cldk.yaml by name that are not built but written into the chart with the given
 	// reference, e.g. "registry.example.com/foo:1.0".
 	ReplaceImages map[string]string
@@ -82,7 +76,7 @@ type DoguClient interface {
 	Apply(ctx context.Context, chart dogu.DevChart) error
 }
 
-// Builder builds and pushes images, see build.Builder.
+// Builder builds and pushes images, see build.Builder and project.Builder.
 type Builder interface {
 	Check(ctx context.Context) error
 	Build(ctx context.Context, req build.BuildRequest) error
@@ -145,10 +139,14 @@ func (p *Pusher) Push(ctx context.Context, opts Options) (Result, error) {
 	return push(ctx, dp)
 }
 
-// push builds and pushes the images, pushes the chart and applies the dogu with the dev chart.
+// push builds all images, pushes them, pushes the chart and applies the dogu with the dev chart.
+// A failed build leaves nothing in the dev registry.
 func push(ctx context.Context, dp *devPushPlan) (Result, error) {
-	pushed, err := buildImages(ctx, dp.builder, dp.images.toBuild())
-	if err != nil {
+	if err := project.BuildImages(ctx, dp.builder, dp.images.built); err != nil {
+		return Result{}, err
+	}
+
+	if _, err := project.PushImages(ctx, dp.builder, dp.images.built); err != nil {
 		return Result{}, err
 	}
 
@@ -165,8 +163,8 @@ func push(ctx context.Context, dp *devPushPlan) (Result, error) {
 
 	return Result{
 		Version:        dp.version,
-		Images:         pushed,
-		ReplacedImages: dp.images.replaced(),
+		Images:         dp.images.pushed(),
+		ReplacedImages: dp.images.replaced,
 		SkippedImages:  dp.images.skipped,
 		ChartReference: dp.chartRef,
 		ChartDigest:    digest,
@@ -177,14 +175,12 @@ func push(ctx context.Context, dp *devPushPlan) (Result, error) {
 
 // loadProject reads the project file and returns it with the target in the dev registry.
 func loadProject(opts Options) (cldkfile.ProjectFile, oci.Target, error) {
-	slog.Info("loading project", "dir", opts.Dir)
-
-	project, err := cldkfile.Load(opts.Dir)
+	file, err := project.LoadFile(opts.Dir)
 	if err != nil {
 		return cldkfile.ProjectFile{}, oci.Target{}, err
 	}
 
-	if err := checkImageNames(opts, project); err != nil {
+	if err := checkImageNames(opts, file); err != nil {
 		return cldkfile.ProjectFile{}, oci.Target{}, err
 	}
 
@@ -196,9 +192,9 @@ func loadProject(opts Options) (cldkfile.ProjectFile, oci.Target, error) {
 	}
 
 	if target.Namespace == "" {
-		target.Namespace = project.Namespace
+		target.Namespace = file.Namespace
 		slog.Debug("using the namespace of the project file", "namespace", target.Namespace)
 	}
 
-	return project, target, nil
+	return file, target, nil
 }

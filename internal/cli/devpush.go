@@ -27,14 +27,8 @@ const (
 	envDevInsecure        = "CLDK_DEV_INSECURE"
 	envDevKubeContext     = "CLDK_DEV_KUBE_CONTEXT"
 	envDevKubeNamespace   = "CLDK_DEV_KUBE_NAMESPACE"
-	envDevBuilder         = "CLDK_DEV_BUILDER"
-	envDevPlatform        = "CLDK_DEV_PLATFORM"
-	envDevNoCache         = "CLDK_DEV_NO_CACHE"
 	envDevValues          = "CLDK_DEV_VALUES"
 )
-
-// defaultBuilder is the build CLI if none is given.
-const defaultBuilder = "docker"
 
 // Flags of dev-push.
 const (
@@ -45,11 +39,7 @@ const (
 	flagInsecure        = "insecure"
 	flagKubeContext     = "kube-context"
 	flagKubeNamespace   = "kube-namespace"
-	flagBuilder         = "builder"
-	flagPlatform        = "platform"
-	flagNoCache         = "no-cache"
 	flagValues          = "values"
-	flagBuildArg        = "build-arg"
 	flagReplaceImage    = "replace-image"
 	flagSkipImage       = "skip-image"
 	flagDryRun          = "dry-run"
@@ -70,8 +60,9 @@ address of the dev registry; it is linted before the first build and pushed afte
 the dogu with this version and the dev chart in the cluster of the current kubeconfig context. The project directory
 is not changed.
 
-Settings are taken from the flags, the CLDK_DEV_* environment variables or the .env of the project directory, in this
-order. See the README for the dev mode of the dogu operator and for switching back to the regular dogu.`
+Settings are taken from the flags, the environment variables (CLDK_DEV_* for the dev registry and the cluster,
+CLDK_BUILDER, CLDK_PLATFORM and CLDK_NO_CACHE for the builds) or the .env of the project directory, in this order. 
+See the README for the dev mode of the dogu operator and for switching back to the regular dogu.`
 
 const devPushExample = `  # .env in the dogu repository, e.g. for a k3d cluster with a local registry
   CLDK_DEV_REG=localhost:5001
@@ -161,14 +152,11 @@ func newDevPushCommand(pusher DevPusher) *cobra.Command {
 	cmd.Flags().Bool(flagInsecure, false, "allow TLS without certificate verification for the dev registry (env: "+envDevInsecure+")")
 	cmd.Flags().String(flagKubeContext, "", "kubeconfig context of the cluster, default the current context (env: "+envDevKubeContext+")")
 	cmd.Flags().String(flagKubeNamespace, "", "Kubernetes namespace of the dogu, default the namespace of the context, otherwise default (env: "+envDevKubeNamespace+")")
-	cmd.Flags().String(flagBuilder, "", "Docker compatible build CLI the images are built and pushed with, default "+defaultBuilder+" (env: "+envDevBuilder+")")
-	cmd.Flags().String(flagPlatform, "", "platform the images are built for as os/arch, passed to the builder (env: "+envDevPlatform+")")
-	cmd.Flags().Bool(flagNoCache, false, "build the images without the cache of the builder (env: "+envDevNoCache+")")
 	cmd.Flags().String(flagValues, "", "YAML file with Helm values for the dogu, relative to the project directory; applied as spec.values and used for the lint (env: "+envDevValues+")")
-	cmd.Flags().StringArray(flagBuildArg, nil, "build argument KEY=VALUE for all images, overrides buildArgs of cldk.yaml; KEY alone takes the value from the environment; repeatable")
 	cmd.Flags().StringArray(flagReplaceImage, nil, "image of cldk.yaml as <name>=<reference> that is not built, but written into the chart with this reference; repeatable")
 	cmd.Flags().StringArray(flagSkipImage, nil, "image of cldk.yaml that is neither built nor written into the chart; repeatable")
 	cmd.Flags().Bool(flagDryRun, false, "run all checks including the cluster connection and the lint, print the plan and the dogu resource, but build, push and apply nothing")
+	addBuildFlags(cmd)
 
 	return cmd
 }
@@ -178,9 +166,9 @@ func newDevPushCommand(pusher DevPusher) *cobra.Command {
 func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 	plainHTTP, plainHTTPErr := r.boolean(flagPlainHTTP, envDevPlainHTTP)
 	insecure, insecureErr := r.boolean(flagInsecure, envDevInsecure)
-	noCache, noCacheErr := r.boolean(flagNoCache, envDevNoCache)
+	buildOpts, buildErr := resolveBuildOptions(r)
 
-	if err := errors.Join(plainHTTPErr, insecureErr, noCacheErr); err != nil {
+	if err := errors.Join(plainHTTPErr, insecureErr, buildErr); err != nil {
 		return devpush.Options{}, err
 	}
 
@@ -193,18 +181,12 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 			Context:   r.str(flagKubeContext, envDevKubeContext, "current context"),
 			Namespace: r.str(flagKubeNamespace, envDevKubeNamespace, "namespace of the context"),
 		},
-		Builder:    r.str(flagBuilder, envDevBuilder, defaultBuilder),
-		Platform:   r.str(flagPlatform, envDevPlatform, "platform of the builder"),
-		NoCache:    noCache,
+		Build:      buildOpts,
 		ValuesFile: r.str(flagValues, envDevValues, ""),
 	}
 
 	if err := resolveImageOptions(r, &opts); err != nil {
 		return devpush.Options{}, err
-	}
-
-	if opts.Builder == "" {
-		opts.Builder = defaultBuilder
 	}
 
 	if opts.Registry == "" {
@@ -230,17 +212,12 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 	return opts, nil
 }
 
-// resolveImageOptions resolves the build arguments and the replaced and skipped images of dev-push into opts.
+// resolveImageOptions resolves the replaced and skipped images of dev-push into opts.
 func resolveImageOptions(r optionResolver, opts *devpush.Options) error {
-	buildArgs, buildArgsErr := r.stringArray(flagBuildArg)
 	replaceImageSpecs, replaceImageErr := r.stringArray(flagReplaceImage)
 	skipImageNames, skipImageErr := r.stringArray(flagSkipImage)
 
-	if err := errors.Join(buildArgsErr, replaceImageErr, skipImageErr); err != nil {
-		return err
-	}
-
-	if err := validateBuildArgs(buildArgs); err != nil {
+	if err := errors.Join(replaceImageErr, skipImageErr); err != nil {
 		return err
 	}
 
@@ -249,7 +226,6 @@ func resolveImageOptions(r optionResolver, opts *devpush.Options) error {
 		return err
 	}
 
-	opts.BuildArgs = buildArgs
 	opts.ReplaceImages = replaceImages
 	opts.SkipImages = skipImages
 
@@ -299,20 +275,6 @@ func resolveImageSelection(replacements, skips []string) (map[string]string, []s
 	}
 
 	return replaceImages, skips, nil
-}
-
-// validateBuildArgs checks that each build argument is given as KEY=VALUE or KEY, with a key without whitespace.
-func validateBuildArgs(args []string) error {
-	for _, arg := range args {
-		key, _, _ := strings.Cut(arg, "=")
-
-		if key == "" || strings.ContainsAny(key, " \t\n") {
-			return fmt.Errorf("invalid build argument %q of --%s: must be given as KEY=VALUE or KEY, e.g. HTTP_PROXY=http://proxy:3128",
-				arg, flagBuildArg)
-		}
-	}
-
-	return nil
 }
 
 // validateRegistryAddress checks that the address of a registry is given as host[:port], without scheme or path.
