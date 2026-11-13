@@ -9,6 +9,7 @@ import (
 )
 
 // Version and CommitID are injected at build time via -ldflags (see build/make/build.mk).
+// Without -ldflags, Version falls back to the module version (see buildinfo.go).
 var (
 	Version  = "development"
 	CommitID = "unknown"

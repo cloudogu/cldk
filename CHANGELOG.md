@@ -6,4 +6,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- [#6] `cldk` binaries for Linux and macOS as GitHub release assets, installable with `curl`, mise or `go install`
 - [#1] `release` command to publish a dogu v3 helm chart and its images to an OCI registry
