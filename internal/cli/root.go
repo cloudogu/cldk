@@ -53,7 +53,7 @@ func NewRootCommand(info BuildInfo, releaser Releaser, devPusher DevPusher) *cob
 	}
 
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable debug logging")
-	root.PersistentFlags().StringVarP(&dir, flagDir, "d", ".", "project directory, its .env is loaded into the environment")
+	root.PersistentFlags().StringVarP(&dir, flagDir, "d", ".", "project directory with the cldk.yaml of the dogu; its .env is loaded into the environment")
 
 	root.AddCommand(newVersionCommand(info))
 	root.AddCommand(newDoguCommand(releaser, devPusher))

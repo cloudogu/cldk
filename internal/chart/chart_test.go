@@ -259,6 +259,18 @@ func TestLint(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("does not change the given values", func(t *testing.T) {
+		c, err := LoadDir(copyChart(t, "nexus", nil))
+		require.NoError(t, err)
+		// helm lint merges the values of the chart into nested tables of the given values that the chart also has.
+		values := map[string]any{"nexus": map[string]any{"replicas": 2}}
+
+		_, err = Lint(c, values)
+
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"nexus": map[string]any{"replicas": 2}}, values)
+	})
+
 	t.Run("lints the chart in memory with its changes", func(t *testing.T) {
 		c, err := LoadDir(copyChart(t, "nexus", nil))
 		require.NoError(t, err)

@@ -79,7 +79,7 @@ The credentials need write access to the target namespace, `testing` in the exam
 The chart is released as it is; its image references keep pointing to the entries of `values.yaml`.
 
 ```shell
-cldk dogu release --dry-run --namespace testing target/nexus-1.2.3.tgz
+cldk dogu release --dry-run --dogu-namespace testing target/nexus-1.2.3.tgz
 ```
 
 ```
@@ -88,14 +88,14 @@ Would release chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2
 ```
 
 ```shell
-cldk dogu release --namespace testing target/nexus-1.2.3.tgz
+cldk dogu release --dogu-namespace testing target/nexus-1.2.3.tgz
 ```
 
 ```
 Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3@sha256:…
 ```
 
-`--namespace` is required, so that nothing ends up in `official` by accident.
+`--dogu-namespace` is required, so that nothing ends up in `official` by accident.
 `--reg` is not needed, `registry.cloudogu.com` is the default.
 
 ## Example 2: Chart with image
@@ -103,7 +103,7 @@ Released chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2.3@sh
 The Nexus image of the CI registry is released together with the chart:
 
 ```shell
-cldk dogu release --dry-run --namespace testing \
+cldk dogu release --dry-run --dogu-namespace testing \
   -i ci-registry.example.com/nexus:3.96.4 \
   target/nexus-1.2.3.tgz
 ```
@@ -115,7 +115,7 @@ Would release chart oci://registry.cloudogu.com/testing/dogu/v3/charts/nexus:1.2
 ```
 
 ```shell
-cldk dogu release --namespace testing \
+cldk dogu release --dogu-namespace testing \
   -i ci-registry.example.com/nexus:3.96.4 \
   target/nexus-1.2.3.tgz
 ```
@@ -138,7 +138,7 @@ The chart is released under its own version `1.2.3`.
 If the name or tag of the source does not fit, set them explicitly with `=<name>:<tag>`:
 
 ```shell
-cldk dogu release --namespace testing \
+cldk dogu release --dogu-namespace testing \
   -i ci-registry.example.com/dogus/nexus-build:42=nexus:3.96.4 \
   target/nexus-1.2.3.tgz
 ```
@@ -146,7 +146,7 @@ cldk dogu release --namespace testing \
 If no or more than one entry of `values.images` fits the name, assign the image with `--image-key <name>=<key>`:
 
 ```shell
-cldk dogu release --namespace testing \
+cldk dogu release --dogu-namespace testing \
   -i ci-registry.example.com/sa-sidecar:0.1.2=service-account-producer-sidecar:0.1.2 \
   --image-key service-account-producer-sidecar=nexusSaManager \
   target/nexus-1.2.3.tgz
@@ -167,7 +167,7 @@ So an aborted release can simply be run again: images copied before are skipped.
 With `--force`, image tags and the chart version are overwritten on purpose, e.g. to correct a release in `testing`:
 
 ```shell
-cldk dogu release --force --namespace testing -i ci-registry.example.com/nexus:3.96.4 target/nexus-1.2.3.tgz
+cldk dogu release --force --dogu-namespace testing -i ci-registry.example.com/nexus:3.96.4 target/nexus-1.2.3.tgz
 ```
 
 ## Checking the result

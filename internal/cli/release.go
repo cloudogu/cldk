@@ -39,7 +39,7 @@ func newReleaseCommand(releaser Releaser) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if target.Namespace == "" {
-				return errors.New("--namespace must not be empty")
+				return errors.New("--" + flagDoguNamespace + " must not be empty")
 			}
 
 			// Credentials are taken as a pair from one source, flags or environment, never mixed.
@@ -74,8 +74,8 @@ func newReleaseCommand(releaser Releaser) *cobra.Command {
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "overwrite image tags with another digest and an already released chart version in the target registry")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "check the release and print the plan without pushing anything")
 	cmd.Flags().StringVar(&target.Registry, "reg", "registry.cloudogu.com", "target registry")
-	cmd.Flags().StringVar(&target.Namespace, "namespace", "", "target namespace in the registry (required)")
-	_ = cmd.MarkFlagRequired("namespace")
+	cmd.Flags().StringVar(&target.Namespace, flagDoguNamespace, "", "target namespace in the registry (required)")
+	_ = cmd.MarkFlagRequired(flagDoguNamespace)
 	cmd.Flags().StringVar(&target.User, "user", "", "user for the target registry (env: "+envUser+"), default: stored helm/docker credentials")
 	cmd.Flags().StringVar(&target.Password, "pass", "", "password for the target registry (env: "+envPassword+")")
 	cmd.Flags().BoolVar(&target.PlainHTTP, "plain-http", false, "allow unencrypted HTTP connections to the target registry")

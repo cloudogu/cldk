@@ -23,9 +23,9 @@ The chart refers to its images in `values.images` of its `mirror-patch-tpl.yaml`
 ## Usage
 
 ```shell
-cldk dogu release --namespace <ns> <chart.tgz>   # release a packed dogu chart to registry.cloudogu.com
-cldk dogu release --namespace <ns> -i <image> ... <chart.tgz>   # release the chart together with its images
-cldk dogu release --dry-run --namespace <ns> -i <image> ... <chart.tgz>   # print the plan without pushing anything
+cldk dogu release --dogu-namespace <ns> <chart.tgz>   # release a packed dogu chart to registry.cloudogu.com
+cldk dogu release --dogu-namespace <ns> -i <image> ... <chart.tgz>   # release the chart together with its images
+cldk dogu release --dry-run --dogu-namespace <ns> -i <image> ... <chart.tgz>   # print the plan without pushing anything
 cldk dogu dev-push   # push the dogu v3 under development in the working directory and install it in the current cluster
 cldk version        # print the version and commit of cldk
 cldk -v <command>   # enable debug logging of cldk, debug output of libraries like Helm is left out
@@ -38,10 +38,10 @@ cldk dogu release --help   # show the options of a command
 
 See [Releasing a dogu with `cldk dogu release`](docs/operations/releasing_a_dogu_en.md) ([Deutsch](docs/operations/releasing_a_dogu_de.md)) for examples with `registry.cloudogu.com`.
 
-Pass a packed Dogu Helm chart and specify the required target namespace with `--namespace <ns>`:
+Pass a packed Dogu Helm chart and specify the required target namespace with `--dogu-namespace <ns>`:
 
 ```shell
-cldk dogu release --namespace <ns> <chart.tgz>
+cldk dogu release --dogu-namespace <ns> <chart.tgz>
 ```
 
 By default, the chart is published to `registry.cloudogu.com`.
@@ -57,7 +57,7 @@ Use `--image <image>` (short form: `-i`) to include an image.
 Repeat the flag for each image to release with the chart:
 
 ```shell
-cldk dogu release --namespace <ns> \
+cldk dogu release --dogu-namespace <ns> \
   -i registry.cloudogu.com/official/nexus:3.96.4 \
   -i docker.io/library/postgres:14.18 \
   <chart.tgz>
@@ -74,7 +74,7 @@ For example, `docker.io/library/postgres:14.18` becomes `<reg>/<ns>/dogu/v3/imag
 Use `-i <image>=<name>:<tag>` to override the defaults:
 
 ```shell
-cldk dogu release --namespace <ns> \
+cldk dogu release --dogu-namespace <ns> \
   -i localhost:5001/local-dev/nexus/main:3.96.4=nexus:3.96.4 \
   <chart.tgz>
 ```
@@ -100,7 +100,7 @@ If no entry matches, or several entries match, assign the image explicitly with 
 Here, `<name>` is the target image name and `<key>` is the entry under `values.images` in `mirror-patch-tpl.yaml`:
 
 ```shell
-cldk dogu release --namespace <ns> \
+cldk dogu release --dogu-namespace <ns> \
   -i docker.io/library/postgres:14.18 \
   --image-key postgres=postgresql \
   <chart.tgz>
@@ -113,7 +113,7 @@ Repeat `--image-key` to map additional images.
 Add `--dry-run` to check the release without pushing anything:
 
 ```shell
-cldk dogu release --dry-run --namespace <ns> \
+cldk dogu release --dry-run --dogu-namespace <ns> \
   -i docker.io/library/postgres:14.18 \
   <chart.tgz>
 ```
@@ -127,7 +127,7 @@ Mapping errors and conflicts cause the dry run to fail.
 Use `--force` to overwrite conflicting image tags and already released chart versions, for example when testing releases:
 
 ```shell
-cldk dogu release --namespace <ns> --force <chart.tgz>
+cldk dogu release --dogu-namespace <ns> --force <chart.tgz>
 ```
 
 All targets are checked before the first push.
@@ -144,7 +144,7 @@ Existing artifacts are handled as follows:
 Use `--reg <registry>` to publish to a registry other than the default `registry.cloudogu.com`:
 
 ```shell
-cldk dogu release --namespace <ns> --reg registry.example.com <chart.tgz>
+cldk dogu release --dogu-namespace <ns> --reg registry.example.com <chart.tgz>
 ```
 
 #### `--plain-http` and `--insecure`: Configure registry transport
@@ -159,7 +159,7 @@ cldk dogu release --namespace <ns> --reg registry.example.com <chart.tgz>
 Supply both flags together to set the target registry credentials:
 
 ```shell
-cldk dogu release --namespace <ns> --user <user> --pass <password> <chart.tgz>
+cldk dogu release --dogu-namespace <ns> --user <user> --pass <password> <chart.tgz>
 ```
 
 Target registry credentials are selected in this order:
@@ -206,7 +206,7 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
 |--------------------------------|---------------------------|----------------------------------------------------------------------------------------|
 | `--reg <host[:port]>`          | `CLDK_DEV_REG`            | address of the dev registry to push to, required                                       |
 | `--cluster-reg <host[:port]>`  | `CLDK_DEV_CLUSTER_REG`    | address of the dev registry as seen from the cluster, default `--reg`                  |
-| `--namespace <ns>`             | `CLDK_DEV_NAMESPACE`      | dogu namespace, default the `namespace` of `cldk.yaml`                                 |
+| `--dogu-namespace <ns>`        | `CLDK_DEV_DOGU_NAMESPACE` | dogu namespace, default the `namespace` of `cldk.yaml`                                 |
 | `--plain-http`                 | `CLDK_DEV_PLAIN_HTTP`     | dev registry without TLS                                                               |
 | `--insecure`                   | `CLDK_DEV_INSECURE`       | dev registry with an untrusted (e.g. self-signed) certificate                          |
 | `--kube-context <name>`        | `CLDK_DEV_KUBE_CONTEXT`   | kubeconfig context of the cluster, default the current context                         |

@@ -53,7 +53,7 @@ func newSuccessfulDevPusher() *MockDevPusher {
 func isolateDevPushEnv(t *testing.T) {
 	t.Helper()
 
-	unsetEnv(t, envDevRegistry, envDevClusterRegistry, envDevNamespace, envDevPlainHTTP, envDevInsecure, envDevKubeContext,
+	unsetEnv(t, envDevRegistry, envDevClusterRegistry, envDevDoguNamespace, envDevPlainHTTP, envDevInsecure, envDevKubeContext,
 		envDevKubeNamespace, envDevBuilder, envDevPlatform, envDevNoCache, envDevValues)
 }
 
@@ -81,7 +81,7 @@ func TestDevPushCommand(t *testing.T) {
 		dir := t.TempDir()
 
 		opts, _, _, err := runDevPush(t, dir, "--reg", "localhost:5001", "--cluster-reg", "k3d-registry-proxy.localhost:5000",
-			"--namespace", "personal", "--plain-http", "--insecure", "--kube-context", "k3d-dev2", "--kube-namespace", "dogus",
+			"--dogu-namespace", "personal", "--plain-http", "--insecure", "--kube-context", "k3d-dev2", "--kube-namespace", "dogus",
 			"--builder", "podman", "--platform", "linux/arm64", "--no-cache", "--values", "dev-values.yaml", "--build-arg", "FOO=bar", "--build-arg", "HTTP_PROXY")
 
 		require.NoError(t, err)
@@ -117,7 +117,7 @@ func TestDevPushCommand(t *testing.T) {
 		isolateDevPushEnv(t)
 		t.Setenv(envDevRegistry, "localhost:5001")
 		t.Setenv(envDevClusterRegistry, "k3d-registry-proxy.localhost:5000")
-		t.Setenv(envDevNamespace, "personal")
+		t.Setenv(envDevDoguNamespace, "personal")
 		t.Setenv(envDevPlainHTTP, "true")
 		t.Setenv(envDevInsecure, "1")
 		t.Setenv(envDevKubeContext, "k3d-dev2")
@@ -275,7 +275,7 @@ func TestDevPushCommand(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, stderr, `option=reg value=localhost:5001 source="flag --reg"`)
 		assert.Contains(t, stderr, `option=cluster-reg value="" source="default: --reg"`)
-		assert.Contains(t, stderr, `option=namespace value="" source="default: namespace of cldk.yaml"`)
+		assert.Contains(t, stderr, `option=dogu-namespace value="" source="default: namespace of cldk.yaml"`)
 		assert.Contains(t, stderr, `option=kube-context value="" source="default: current context"`)
 		assert.Contains(t, stderr, `option=kube-namespace value="" source="default: namespace of the context"`)
 		assert.Contains(t, stderr, `cluster address of the dev registry" address=localhost:5001`)
@@ -347,7 +347,7 @@ func TestDevPushCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		for _, env := range []string{
-			envDevRegistry, envDevClusterRegistry, envDevNamespace, envDevPlainHTTP, envDevInsecure, envDevKubeContext,
+			envDevRegistry, envDevClusterRegistry, envDevDoguNamespace, envDevPlainHTTP, envDevInsecure, envDevKubeContext,
 			envDevKubeNamespace, envDevBuilder, envDevPlatform, envDevNoCache, envDevValues,
 		} {
 			assert.Contains(t, stdout, "(env: "+env+")")

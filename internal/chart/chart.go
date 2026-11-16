@@ -75,12 +75,11 @@ func Pack(c *helmchart.Chart) ([]byte, error) {
 func Lint(c *helmchart.Chart, values map[string]any) (warnings []string, err error) {
 	var result *action.LintResult
 
-	if values == nil {
-		values = map[string]any{}
-	}
+	// helm lint merges the values of the chart into nested tables of the given values, so it gets a copy.
+	lintValues := copyValues(values)
 
 	err = withArchiveFile(c, func(path string) error {
-		result = action.NewLint().Run([]string{path}, values)
+		result = action.NewLint().Run([]string{path}, lintValues)
 
 		return nil
 	})
@@ -99,6 +98,32 @@ func Lint(c *helmchart.Chart, values map[string]any) (warnings []string, err err
 	}
 
 	return warnings, nil
+}
+
+// copyValues returns a deep copy of the values, an empty map for nil.
+func copyValues(values map[string]any) map[string]any {
+	result := make(map[string]any, len(values))
+	for key, value := range values {
+		result[key] = copyValue(value)
+	}
+
+	return result
+}
+
+func copyValue(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		return copyValues(v)
+	case []any:
+		result := make([]any, len(v))
+		for i, item := range v {
+			result[i] = copyValue(item)
+		}
+
+		return result
+	default:
+		return v
+	}
 }
 
 // withArchiveFile packs the chart into a temporary archive file outside the working directory and calls fn with its

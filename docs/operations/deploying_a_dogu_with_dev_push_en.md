@@ -99,7 +99,7 @@ docker login registry.cloudogu.com
 KUBECONFIG=/home/me/.kube/test-cluster
 CLDK_DEV_KUBE_NAMESPACE=ecosystem
 CLDK_DEV_REG=registry.cloudogu.com
-CLDK_DEV_NAMESPACE=testing
+CLDK_DEV_DOGU_NAMESPACE=testing
 ```
 
 `CLDK_DEV_CLUSTER_REG` stays empty: the cluster reaches the registry under the same address.

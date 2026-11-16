@@ -22,7 +22,7 @@ import (
 const (
 	envDevRegistry        = "CLDK_DEV_REG"
 	envDevClusterRegistry = "CLDK_DEV_CLUSTER_REG"
-	envDevNamespace       = "CLDK_DEV_NAMESPACE"
+	envDevDoguNamespace   = "CLDK_DEV_DOGU_NAMESPACE"
 	envDevPlainHTTP       = "CLDK_DEV_PLAIN_HTTP"
 	envDevInsecure        = "CLDK_DEV_INSECURE"
 	envDevKubeContext     = "CLDK_DEV_KUBE_CONTEXT"
@@ -40,7 +40,7 @@ const defaultBuilder = "docker"
 const (
 	flagRegistry        = "reg"
 	flagClusterRegistry = "cluster-reg"
-	flagNamespace       = "namespace"
+	flagDoguNamespace   = "dogu-namespace"
 	flagPlainHTTP       = "plain-http"
 	flagInsecure        = "insecure"
 	flagKubeContext     = "kube-context"
@@ -90,7 +90,7 @@ const devPushExample = `  # .env in the dogu repository, e.g. for a k3d cluster 
   cldk dogu dev-push --dry-run
 
   # push the dogu in another directory to a personal namespace
-  cldk --dir ../nexus dogu dev-push --namespace personal
+  cldk --dir ../nexus dogu dev-push --dogu-namespace personal
 
   # push the dogu with Helm values from a local file, applied as spec.values of the dogu
   cldk dogu dev-push --values dev-values.yaml
@@ -120,43 +120,14 @@ func newDevPushCommand(pusher DevPusher) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			options, err := resolveDevPushOptions(optionResolver{cmd: cmd})
-			if err != nil {
-				return err
-			}
-
-			// --dir is a persistent flag of the root command.
-			if options.Dir, err = cmd.Flags().GetString(flagDir); err != nil {
-				return err
-			}
-
-			dryRun, err := cmd.Flags().GetBool(flagDryRun)
-			if err != nil {
-				return err
-			}
-
-			if dryRun {
-				plan, err := pusher.Plan(cmd.Context(), options)
-				if err != nil {
-					return err
-				}
-
-				return printDevPushPlan(cmd.OutOrStdout(), plan)
-			}
-
-			result, err := pusher.Push(cmd.Context(), options)
-			if err != nil {
-				return err
-			}
-
-			return printDevPushResult(cmd.OutOrStdout(), result)
+			return executeDevPush(cmd, pusher)
 		},
 	}
 
 	// The values of the flags are resolved together with the environment, see resolveDevPushOptions.
 	cmd.Flags().String(flagRegistry, "", "address of the dev registry to push to as host[:port], required (env: "+envDevRegistry+")")
 	cmd.Flags().String(flagClusterRegistry, "", "address of the dev registry as seen from the cluster as host[:port], default --reg (env: "+envDevClusterRegistry+")")
-	cmd.Flags().String(flagNamespace, "", "dogu namespace in the dev registry, default the namespace of cldk.yaml (env: "+envDevNamespace+")")
+	cmd.Flags().String(flagDoguNamespace, "", "dogu namespace in the dev registry, default the namespace of cldk.yaml (env: "+envDevDoguNamespace+")")
 	cmd.Flags().Bool(flagPlainHTTP, false, "allow unencrypted HTTP connections to the dev registry (env: "+envDevPlainHTTP+")")
 	cmd.Flags().Bool(flagInsecure, false, "allow TLS without certificate verification for the dev registry (env: "+envDevInsecure+")")
 	cmd.Flags().String(flagKubeContext, "", "kubeconfig context of the cluster, default the current context (env: "+envDevKubeContext+")")
@@ -173,6 +144,40 @@ func newDevPushCommand(pusher DevPusher) *cobra.Command {
 	return cmd
 }
 
+// executeDevPush resolves the options of the dev-push command and pushes the dogu, or only prints the plan with --dry-run.
+func executeDevPush(cmd *cobra.Command, pusher DevPusher) error {
+	options, err := resolveDevPushOptions(optionResolver{cmd: cmd})
+	if err != nil {
+		return err
+	}
+
+	// --dir is a persistent flag of the root command.
+	if options.Dir, err = cmd.Flags().GetString(flagDir); err != nil {
+		return err
+	}
+
+	dryRun, err := cmd.Flags().GetBool(flagDryRun)
+	if err != nil {
+		return err
+	}
+
+	if dryRun {
+		plan, err := pusher.Plan(cmd.Context(), options)
+		if err != nil {
+			return err
+		}
+
+		return printDevPushPlan(cmd.OutOrStdout(), plan)
+	}
+
+	result, err := pusher.Push(cmd.Context(), options)
+	if err != nil {
+		return err
+	}
+
+	return printDevPushResult(cmd.OutOrStdout(), result)
+}
+
 // resolveDevPushOptions resolves the options of dev-push from the flags and the environment, flags first.
 // Every resolved value is logged with its source.
 func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
@@ -187,7 +192,7 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 	opts := devpush.Options{
 		PlainHTTP: plainHTTP,
 		Insecure:  insecure,
-		Namespace: r.str(flagNamespace, envDevNamespace, "namespace of cldk.yaml"),
+		Namespace: r.str(flagDoguNamespace, envDevDoguNamespace, "namespace of cldk.yaml"),
 		Registry:  r.str(flagRegistry, envDevRegistry, ""),
 		Kube: kube.Options{
 			Context:   r.str(flagKubeContext, envDevKubeContext, "current context"),
