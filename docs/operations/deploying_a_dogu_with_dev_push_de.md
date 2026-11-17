@@ -9,7 +9,7 @@ Diese Anleitung zeigt zwei Beispiele mit dem Nexus-Dogu:
 - [Beispiel 1](#beispiel-1-cluster-mit-registrycloudogucom-und-namespace-testing): ein normaler Cluster, der seine Dogus von `registry.cloudogu.com` bezieht
 - [Beispiel 2](#beispiel-2-lokaler-k3d-cluster-mit-der-k3d-registry): ein lokaler k3d-Cluster mit der Registry von k3d
 
-Alle Optionen beschreibt die [README](../../README.md#dogu-dev-push).
+Alle Optionen beschreibt die [Referenz von `cldk dogu dev-push`](dogu_dev_push_reference_de.md), die `cldk.yaml` und die `.env` die [Projektkonfiguration](project_configuration_de.md).
 
 ## Ablauf
 

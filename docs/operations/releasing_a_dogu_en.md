@@ -8,7 +8,7 @@ This guide shows two examples with the Nexus dogu, both with `registry.cloudogu.
 - [Example 1](#example-1-chart-without-images): release the chart only
 - [Example 2](#example-2-chart-with-image): release the chart together with the Nexus image
 
-All options are described in the [README](../../README.md#dogu-release).
+All options are described in the [`cldk dogu release` reference](dogu_release_reference_en.md).
 
 ## How it works
 

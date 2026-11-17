@@ -8,7 +8,7 @@ Diese Anleitung zeigt zwei Beispiele mit dem Nexus-Dogu, beide mit `registry.clo
 - [Beispiel 1](#beispiel-1-chart-ohne-images): nur das Chart veröffentlichen
 - [Beispiel 2](#beispiel-2-chart-mit-image): das Chart zusammen mit dem Nexus-Image veröffentlichen
 
-Alle Optionen beschreibt die [README](../../README.md#dogu-release).
+Alle Optionen beschreibt die [Referenz von `cldk dogu release`](dogu_release_reference_de.md).
 
 ## Ablauf
 
