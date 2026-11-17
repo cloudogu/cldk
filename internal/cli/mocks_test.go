@@ -8,8 +8,132 @@ import (
 	"context"
 	"sync"
 
+	"github.com/cloudogu/cldk/internal/devpush"
+	"github.com/cloudogu/cldk/internal/oci"
 	"github.com/cloudogu/cldk/internal/release"
 )
+
+// Ensure that MockDevPusher does implement DevPusher.
+// If this is not the case, regenerate this file with mockery.
+var _ DevPusher = &MockDevPusher{}
+
+// MockDevPusher is a mock implementation of DevPusher.
+//
+//	func TestSomethingThatUsesDevPusher(t *testing.T) {
+//
+//		// make and configure a mocked DevPusher
+//		mockedDevPusher := &MockDevPusher{
+//			PlanFunc: func(ctx context.Context, opts devpush.Options) (devpush.Plan, error) {
+//				panic("mock out the Plan method")
+//			},
+//			PushFunc: func(ctx context.Context, opts devpush.Options) (devpush.Result, error) {
+//				panic("mock out the Push method")
+//			},
+//		}
+//
+//		// use mockedDevPusher in code that requires DevPusher
+//		// and then make assertions.
+//
+//	}
+type MockDevPusher struct {
+	// PlanFunc mocks the Plan method.
+	PlanFunc func(ctx context.Context, opts devpush.Options) (devpush.Plan, error)
+
+	// PushFunc mocks the Push method.
+	PushFunc func(ctx context.Context, opts devpush.Options) (devpush.Result, error)
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// Plan holds details about calls to the Plan method.
+		Plan []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Opts is the opts argument value.
+			Opts devpush.Options
+		}
+		// Push holds details about calls to the Push method.
+		Push []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Opts is the opts argument value.
+			Opts devpush.Options
+		}
+	}
+	lockPlan sync.RWMutex
+	lockPush sync.RWMutex
+}
+
+// Plan calls PlanFunc.
+func (mock *MockDevPusher) Plan(ctx context.Context, opts devpush.Options) (devpush.Plan, error) {
+	if mock.PlanFunc == nil {
+		panic("MockDevPusher.PlanFunc: method is nil but DevPusher.Plan was just called")
+	}
+	callInfo := struct {
+		Ctx  context.Context
+		Opts devpush.Options
+	}{
+		Ctx:  ctx,
+		Opts: opts,
+	}
+	mock.lockPlan.Lock()
+	mock.calls.Plan = append(mock.calls.Plan, callInfo)
+	mock.lockPlan.Unlock()
+	return mock.PlanFunc(ctx, opts)
+}
+
+// PlanCalls gets all the calls that were made to Plan.
+// Check the length with:
+//
+//	len(mockedDevPusher.PlanCalls())
+func (mock *MockDevPusher) PlanCalls() []struct {
+	Ctx  context.Context
+	Opts devpush.Options
+} {
+	var calls []struct {
+		Ctx  context.Context
+		Opts devpush.Options
+	}
+	mock.lockPlan.RLock()
+	calls = mock.calls.Plan
+	mock.lockPlan.RUnlock()
+	return calls
+}
+
+// Push calls PushFunc.
+func (mock *MockDevPusher) Push(ctx context.Context, opts devpush.Options) (devpush.Result, error) {
+	if mock.PushFunc == nil {
+		panic("MockDevPusher.PushFunc: method is nil but DevPusher.Push was just called")
+	}
+	callInfo := struct {
+		Ctx  context.Context
+		Opts devpush.Options
+	}{
+		Ctx:  ctx,
+		Opts: opts,
+	}
+	mock.lockPush.Lock()
+	mock.calls.Push = append(mock.calls.Push, callInfo)
+	mock.lockPush.Unlock()
+	return mock.PushFunc(ctx, opts)
+}
+
+// PushCalls gets all the calls that were made to Push.
+// Check the length with:
+//
+//	len(mockedDevPusher.PushCalls())
+func (mock *MockDevPusher) PushCalls() []struct {
+	Ctx  context.Context
+	Opts devpush.Options
+} {
+	var calls []struct {
+		Ctx  context.Context
+		Opts devpush.Options
+	}
+	mock.lockPush.RLock()
+	calls = mock.calls.Push
+	mock.lockPush.RUnlock()
+	return calls
+}
 
 // Ensure that MockReleaser does implement Releaser.
 // If this is not the case, regenerate this file with mockery.
@@ -21,10 +145,10 @@ var _ Releaser = &MockReleaser{}
 //
 //		// make and configure a mocked Releaser
 //		mockedReleaser := &MockReleaser{
-//			PlanFunc: func(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Plan, error) {
+//			PlanFunc: func(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Plan, error) {
 //				panic("mock out the Plan method")
 //			},
-//			ReleaseFunc: func(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Result, error) {
+//			ReleaseFunc: func(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Result, error) {
 //				panic("mock out the Release method")
 //			},
 //		}
@@ -35,10 +159,10 @@ var _ Releaser = &MockReleaser{}
 //	}
 type MockReleaser struct {
 	// PlanFunc mocks the Plan method.
-	PlanFunc func(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Plan, error)
+	PlanFunc func(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Plan, error)
 
 	// ReleaseFunc mocks the Release method.
-	ReleaseFunc func(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Result, error)
+	ReleaseFunc func(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Result, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -49,7 +173,7 @@ type MockReleaser struct {
 			// ChartPath is the chartPath argument value.
 			ChartPath string
 			// Target is the target argument value.
-			Target release.Target
+			Target oci.Target
 			// Opts is the opts argument value.
 			Opts release.Options
 		}
@@ -60,7 +184,7 @@ type MockReleaser struct {
 			// ChartPath is the chartPath argument value.
 			ChartPath string
 			// Target is the target argument value.
-			Target release.Target
+			Target oci.Target
 			// Opts is the opts argument value.
 			Opts release.Options
 		}
@@ -70,14 +194,14 @@ type MockReleaser struct {
 }
 
 // Plan calls PlanFunc.
-func (mock *MockReleaser) Plan(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Plan, error) {
+func (mock *MockReleaser) Plan(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Plan, error) {
 	if mock.PlanFunc == nil {
 		panic("MockReleaser.PlanFunc: method is nil but Releaser.Plan was just called")
 	}
 	callInfo := struct {
 		Ctx       context.Context
 		ChartPath string
-		Target    release.Target
+		Target    oci.Target
 		Opts      release.Options
 	}{
 		Ctx:       ctx,
@@ -98,13 +222,13 @@ func (mock *MockReleaser) Plan(ctx context.Context, chartPath string, target rel
 func (mock *MockReleaser) PlanCalls() []struct {
 	Ctx       context.Context
 	ChartPath string
-	Target    release.Target
+	Target    oci.Target
 	Opts      release.Options
 } {
 	var calls []struct {
 		Ctx       context.Context
 		ChartPath string
-		Target    release.Target
+		Target    oci.Target
 		Opts      release.Options
 	}
 	mock.lockPlan.RLock()
@@ -114,14 +238,14 @@ func (mock *MockReleaser) PlanCalls() []struct {
 }
 
 // Release calls ReleaseFunc.
-func (mock *MockReleaser) Release(ctx context.Context, chartPath string, target release.Target, opts release.Options) (release.Result, error) {
+func (mock *MockReleaser) Release(ctx context.Context, chartPath string, target oci.Target, opts release.Options) (release.Result, error) {
 	if mock.ReleaseFunc == nil {
 		panic("MockReleaser.ReleaseFunc: method is nil but Releaser.Release was just called")
 	}
 	callInfo := struct {
 		Ctx       context.Context
 		ChartPath string
-		Target    release.Target
+		Target    oci.Target
 		Opts      release.Options
 	}{
 		Ctx:       ctx,
@@ -142,13 +266,13 @@ func (mock *MockReleaser) Release(ctx context.Context, chartPath string, target 
 func (mock *MockReleaser) ReleaseCalls() []struct {
 	Ctx       context.Context
 	ChartPath string
-	Target    release.Target
+	Target    oci.Target
 	Opts      release.Options
 } {
 	var calls []struct {
 		Ctx       context.Context
 		ChartPath string
-		Target    release.Target
+		Target    oci.Target
 		Opts      release.Options
 	}
 	mock.lockRelease.RLock()

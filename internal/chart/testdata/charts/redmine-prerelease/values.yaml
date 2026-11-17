@@ -1,0 +1,5 @@
+redmine:
+  image:
+    registry: registry.cloudogu.com
+    repository: official/redmine
+    tag: 6.1.2-dev.1

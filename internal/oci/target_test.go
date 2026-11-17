@@ -1,4 +1,4 @@
-package release
+package oci
 
 import (
 	"testing"
@@ -20,7 +20,7 @@ func TestTargetChartRepository(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, tt.target.chartRepository(tt.chartName))
+			assert.Equal(t, tt.want, tt.target.ChartRepository(tt.chartName))
 		})
 	}
 }
