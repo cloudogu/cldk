@@ -95,7 +95,7 @@ func TestPlan(t *testing.T) {
 		pusher.newDoguClient = func(kube.Options) (DoguClient, kube.Info, error) {
 			return nil, kube.Info{}, errors.New(`context "dev3" not found`)
 		}
-		dir := writeProject(t, "namespace: official\n", nil)
+		dir := writeProject(t, "doguNamespace: official\n", nil)
 
 		_, err := pusher.Plan(context.Background(), Options{Dir: dir, Registry: reg})
 
@@ -106,7 +106,7 @@ func TestPlan(t *testing.T) {
 		{name: "a missing project file", wantErr: "cldk.yaml not found"},
 		{
 			name:       "lint errors",
-			cldkYAML:   "namespace: official\nimages:\n  nexus: {}\n",
+			cldkYAML:   "doguNamespace: official\nimages:\n  nexus: {}\n",
 			chartFiles: map[string]string{"values.schema.json": `{"type": "object", "required": ["missingValue"]}`},
 			wantErr:    "missingValue",
 		},
@@ -142,7 +142,7 @@ func TestPlanValues(t *testing.T) {
 
 	t.Run("applies the values of the values file relative to the project directory", func(t *testing.T) {
 		pusher := newMockedPusher()
-		dir := writeProject(t, "namespace: official\n", nil)
+		dir := writeProject(t, "doguNamespace: official\n", nil)
 		writeValues(t, dir, "replicas: 2\nresources:\n  memory: 2Gi\n")
 
 		plan, err := pusher.Plan(context.Background(), Options{Dir: dir, Registry: reg, ValuesFile: "dev-values.yaml"})
@@ -154,7 +154,7 @@ func TestPlanValues(t *testing.T) {
 
 	t.Run("takes an absolute values file", func(t *testing.T) {
 		pusher := newMockedPusher()
-		dir := writeProject(t, "namespace: official\n", nil)
+		dir := writeProject(t, "doguNamespace: official\n", nil)
 		path := writeValues(t, t.TempDir(), "logLevel: debug\n")
 
 		plan, err := pusher.Plan(context.Background(), Options{Dir: dir, Registry: reg, ValuesFile: path})
@@ -165,7 +165,7 @@ func TestPlanValues(t *testing.T) {
 
 	t.Run("applies no values for an empty values file", func(t *testing.T) {
 		pusher := newMockedPusher()
-		dir := writeProject(t, "namespace: official\n", nil)
+		dir := writeProject(t, "doguNamespace: official\n", nil)
 		writeValues(t, dir, "# no values yet\n")
 
 		plan, err := pusher.Plan(context.Background(), Options{Dir: dir, Registry: reg, ValuesFile: "dev-values.yaml"})
@@ -176,7 +176,7 @@ func TestPlanValues(t *testing.T) {
 
 	t.Run("lints the chart with the values", func(t *testing.T) {
 		pusher := newMockedPusher()
-		dir := writeProject(t, "namespace: official\n", map[string]string{
+		dir := writeProject(t, "doguNamespace: official\n", map[string]string{
 			"values.schema.json": `{"type": "object", "required": ["missingValue"]}`,
 		})
 		writeValues(t, dir, "missingValue: given\n")

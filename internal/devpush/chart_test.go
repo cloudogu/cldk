@@ -12,7 +12,7 @@ import (
 func TestPush_chart(t *testing.T) {
 	t.Run("pushes the chart under the dev version without changing the project directory", func(t *testing.T) {
 		reg := newTestRegistry(t)
-		dir := writeProject(t, "namespace: official\n", nil)
+		dir := writeProject(t, "doguNamespace: official\n", nil)
 		before := snapshotDir(t, dir)
 
 		result, err := newTestPusher().Push(context.Background(), Options{Dir: dir, Registry: reg, PlainHTTP: true})
@@ -35,10 +35,10 @@ func TestPush_chart(t *testing.T) {
 	})
 
 	for _, tt := range []abortCase{
-		{name: "a missing chart", cldkYAML: "namespace: official\nchart: helm\n", wantErr: "failed to load chart"},
+		{name: "a missing chart", cldkYAML: "doguNamespace: official\nchart: helm\n", wantErr: "failed to load chart"},
 		{
 			name:       "lint errors",
-			cldkYAML:   "namespace: official\n",
+			cldkYAML:   "doguNamespace: official\n",
 			chartFiles: map[string]string{"values.schema.json": `{"type": "object", "required": ["missingValue"]}`},
 			wantErr:    "missingValue",
 		},
@@ -52,7 +52,7 @@ func TestPush_chart(t *testing.T) {
 func TestPush_version(t *testing.T) {
 	t.Run("keeps a prerelease of the chart version", func(t *testing.T) {
 		pusher := newMockedPusher()
-		dir := writeProject(t, "namespace: official\n", map[string]string{
+		dir := writeProject(t, "doguNamespace: official\n", map[string]string{
 			"Chart.yaml": "apiVersion: v2\nname: nexus\nversion: 1.2.3-rc.1\n",
 		})
 
@@ -66,13 +66,13 @@ func TestPush_version(t *testing.T) {
 	for _, tt := range []abortCase{
 		{
 			name:       "a chart version that is no strict semantic version",
-			cldkYAML:   "namespace: official\n",
+			cldkYAML:   "doguNamespace: official\n",
 			chartFiles: map[string]string{"Chart.yaml": "apiVersion: v2\nname: nexus\nversion: 3.96\n"},
 			wantErr:    `version "3.96" of chart nexus is no valid semantic version`,
 		},
 		{
 			name:       "a chart version with build metadata",
-			cldkYAML:   "namespace: official\n",
+			cldkYAML:   "doguNamespace: official\n",
 			chartFiles: map[string]string{"Chart.yaml": "apiVersion: v2\nname: nexus\nversion: 1.2.3+build.1\n"},
 			wantErr:    `version "1.2.3+build.1" of chart nexus has build metadata`,
 		},

@@ -30,8 +30,8 @@ const (
 
 // ProjectFile is the content of the project file. All paths are relative to the project directory.
 type ProjectFile struct {
-	// Namespace is the dogu namespace in the registry, e.g. "official".
-	Namespace string `yaml:"namespace"`
+	// DoguNamespace is the dogu namespace in the registry, e.g. "official".
+	DoguNamespace string `yaml:"doguNamespace"`
 	// Chart is the chart directory, by default DefaultChart.
 	Chart string `yaml:"chart,omitempty"`
 	// Images are the images to build, by image name. The image name is the last path segment of the image repository.
@@ -60,7 +60,7 @@ func Load(dir string) (ProjectFile, error) {
 
 	content, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return ProjectFile{}, fmt.Errorf("project file %s not found, create it with at least the dogu namespace, e.g.:\n\nnamespace: official", path)
+		return ProjectFile{}, fmt.Errorf("project file %s not found, create it with at least the dogu namespace, e.g.:\n\ndoguNamespace: official", path)
 	}
 
 	if err != nil {
@@ -98,8 +98,8 @@ func parse(content []byte) (ProjectFile, error) {
 
 // validate checks the required fields and the image names.
 func (f *ProjectFile) validate() error {
-	if f.Namespace == "" {
-		return errors.New("namespace is required")
+	if f.DoguNamespace == "" {
+		return errors.New("doguNamespace is required")
 	}
 
 	for _, imageName := range slices.Sorted(maps.Keys(f.Images)) {

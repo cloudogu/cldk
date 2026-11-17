@@ -22,7 +22,7 @@ type Options struct {
 	Registry string
 	// ClusterRegistry is the address of the dev registry as seen from the cluster, as host[:port].
 	ClusterRegistry string
-	// Namespace is the dogu namespace in the registry. If empty, the namespace of cldk.yaml is used.
+	// Namespace is the dogu namespace in the registry. If empty, the doguNamespace of cldk.yaml is used.
 	Namespace string
 	// PlainHTTP allows unencrypted HTTP connections to the dev registry.
 	PlainHTTP bool
@@ -196,8 +196,8 @@ func loadProject(opts Options) (cldkfile.ProjectFile, oci.Target, error) {
 	}
 
 	if target.Namespace == "" {
-		target.Namespace = project.Namespace
-		slog.Debug("using the namespace of the project file", "namespace", target.Namespace)
+		target.Namespace = project.DoguNamespace
+		slog.Debug("using the doguNamespace of the project file", "namespace", target.Namespace)
 	}
 
 	return project, target, nil

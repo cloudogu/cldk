@@ -22,16 +22,16 @@ func writeProjectFile(t *testing.T, content string) string {
 
 func TestLoad(t *testing.T) {
 	t.Run("applies the defaults to a minimal file", func(t *testing.T) {
-		dir := writeProjectFile(t, "namespace: official\n")
+		dir := writeProjectFile(t, "doguNamespace: official\n")
 
 		file, err := Load(dir)
 
 		require.NoError(t, err)
-		assert.Equal(t, ProjectFile{Namespace: "official", Chart: "k8s/helm"}, file)
+		assert.Equal(t, ProjectFile{DoguNamespace: "official", Chart: "k8s/helm"}, file)
 	})
 
 	t.Run("reads the complete schema and applies the defaults of the images", func(t *testing.T) {
-		dir := writeProjectFile(t, `namespace: official
+		dir := writeProjectFile(t, `doguNamespace: official
 chart: helm/nexus
 images:
   nexus: {}
@@ -50,8 +50,8 @@ images:
 
 		require.NoError(t, err)
 		assert.Equal(t, ProjectFile{
-			Namespace: "official",
-			Chart:     "helm/nexus",
+			DoguNamespace: "official",
+			Chart:         "helm/nexus",
 			Images: map[string]Image{
 				"nexus":      {Context: ".", Dockerfile: "Dockerfile"},
 				"sa-manager": {Context: "sidecar", Dockerfile: filepath.Join("sidecar", "Dockerfile")},
@@ -73,7 +73,7 @@ images:
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), filepath.Join(dir, "cldk.yaml"))
-		assert.Contains(t, err.Error(), "namespace: official")
+		assert.Contains(t, err.Error(), "doguNamespace: official")
 	})
 
 	tests := []struct {
@@ -81,12 +81,12 @@ images:
 		content string
 		wantErr string
 	}{
-		{name: "unknown field", content: "namespace: official\nchrat: k8s/helm\n", wantErr: "field chrat not found"},
-		{name: "unknown field of an image", content: "namespace: official\nimages:\n  nexus:\n    dockerFile: x\n", wantErr: "field dockerFile not found"},
-		{name: "missing namespace", content: "chart: k8s/helm\n", wantErr: "namespace is required"},
-		{name: "image name with a slash", content: "namespace: official\nimages:\n  foo/nexus: {}\n", wantErr: `invalid image name "foo/nexus"`},
-		{name: "image name with upper case", content: "namespace: official\nimages:\n  Nexus: {}\n", wantErr: `invalid image name "Nexus"`},
-		{name: "no YAML", content: "namespace: [official\n", wantErr: "failed to parse"},
+		{name: "unknown field", content: "doguNamespace: official\nchrat: k8s/helm\n", wantErr: "field chrat not found"},
+		{name: "unknown field of an image", content: "doguNamespace: official\nimages:\n  nexus:\n    dockerFile: x\n", wantErr: "field dockerFile not found"},
+		{name: "missing namespace", content: "chart: k8s/helm\n", wantErr: "doguNamespace is required"},
+		{name: "image name with a slash", content: "doguNamespace: official\nimages:\n  foo/nexus: {}\n", wantErr: `invalid image name "foo/nexus"`},
+		{name: "image name with upper case", content: "doguNamespace: official\nimages:\n  Nexus: {}\n", wantErr: `invalid image name "Nexus"`},
+		{name: "no YAML", content: "doguNamespace: [official\n", wantErr: "failed to parse"},
 	}
 
 	for _, tt := range tests {

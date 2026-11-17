@@ -275,7 +275,7 @@ func TestDevPushCommand(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, stderr, `option=reg value=localhost:5001 source="flag --reg"`)
 		assert.Contains(t, stderr, `option=cluster-reg value="" source="default: --reg"`)
-		assert.Contains(t, stderr, `option=dogu-namespace value="" source="default: namespace of cldk.yaml"`)
+		assert.Contains(t, stderr, `option=dogu-namespace value="" source="default: doguNamespace of cldk.yaml"`)
 		assert.Contains(t, stderr, `option=kube-context value="" source="default: current context"`)
 		assert.Contains(t, stderr, `option=kube-namespace value="" source="default: namespace of the context"`)
 		assert.Contains(t, stderr, `cluster address of the dev registry" address=localhost:5001`)

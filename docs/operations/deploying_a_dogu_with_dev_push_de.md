@@ -32,9 +32,9 @@ Jeder Push erzeugt eine neue Version, damit der Cluster den neuen Stand sofort �
 - Im Wurzelverzeichnis liegt eine `cldk.yaml`, für Nexus z.B.:
 
   ```yaml
-  namespace: official   # Dogu-Namespace in der Registry, in Beispiel 1 per .env überschrieben
+  doguNamespace: official   # Dogu-Namespace in der Registry, in Beispiel 1 per .env überschrieben
   images:
-    nexus: {}           # baut ./Dockerfile, ersetzt values.images.nexus der mirror-patch-tpl.yaml
+    nexus: {}               # baut ./Dockerfile, ersetzt values.images.nexus der mirror-patch-tpl.yaml
   ```
 
 - Die Einstellungen der eigenen Umgebung gehören in die `.env` des Repositorys.

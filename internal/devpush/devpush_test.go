@@ -14,7 +14,7 @@ import (
 func TestPush(t *testing.T) {
 	t.Run("pushes to the namespace of the options instead of cldk.yaml", func(t *testing.T) {
 		pusher := newMockedPusher()
-		dir := writeProject(t, "namespace: official\n", nil)
+		dir := writeProject(t, "doguNamespace: official\n", nil)
 
 		result, err := pusher.Push(context.Background(), Options{Dir: dir, Registry: "localhost:5001", Namespace: "personal"})
 
@@ -25,7 +25,7 @@ func TestPush(t *testing.T) {
 
 	t.Run("pushes with plain HTTP and without certificate verification as given", func(t *testing.T) {
 		pusher := newMockedPusher()
-		dir := writeProject(t, "namespace: official\n", nil)
+		dir := writeProject(t, "doguNamespace: official\n", nil)
 
 		_, err := pusher.Push(context.Background(), Options{
 			Dir: dir, Registry: "localhost:5001", ClusterRegistry: "k3d-registry.localhost:5000", PlainHTTP: true, Insecure: true,
@@ -41,7 +41,7 @@ func TestPush(t *testing.T) {
 		pusher.newChartPusher = func(oci.Target) (ChartPusher, error) {
 			return nil, errors.New("no registry client")
 		}
-		dir := writeProject(t, "namespace: official\n", nil)
+		dir := writeProject(t, "doguNamespace: official\n", nil)
 
 		_, err := pusher.Push(context.Background(), Options{Dir: dir, Registry: "localhost:5001"})
 

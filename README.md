@@ -178,7 +178,7 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
 - The project directory (see below) needs a `cldk.yaml`:
 
   ```yaml
-  namespace: official        # dogu namespace in the registry, required
+  doguNamespace: official    # dogu namespace in the registry, required
   chart: k8s/helm            # chart directory, default k8s/helm
   images:                    # images to build, optional; without entries nothing is built
     nexus:                   # image name, pushed to <reg>/<namespace>/dogu/v3/images/<name>
@@ -206,7 +206,7 @@ See [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dog
 |--------------------------------|---------------------------|----------------------------------------------------------------------------------------|
 | `--reg <host[:port]>`          | `CLDK_DEV_REG`            | address of the dev registry to push to, required                                       |
 | `--cluster-reg <host[:port]>`  | `CLDK_DEV_CLUSTER_REG`    | address of the dev registry as seen from the cluster, default `--reg`                  |
-| `--dogu-namespace <ns>`        | `CLDK_DEV_DOGU_NAMESPACE` | dogu namespace, default the `namespace` of `cldk.yaml`                                 |
+| `--dogu-namespace <ns>`        | `CLDK_DEV_DOGU_NAMESPACE` | dogu namespace, default the `doguNamespace` of `cldk.yaml`                             |
 | `--plain-http`                 | `CLDK_DEV_PLAIN_HTTP`     | dev registry without TLS                                                               |
 | `--insecure`                   | `CLDK_DEV_INSECURE`       | dev registry with an untrusted (e.g. self-signed) certificate                          |
 | `--kube-context <name>`        | `CLDK_DEV_KUBE_CONTEXT`   | kubeconfig context of the cluster, default the current context                         |

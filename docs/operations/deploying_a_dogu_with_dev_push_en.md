@@ -32,9 +32,9 @@ Each push creates a new version, so that the cluster picks up the new state righ
 - The root directory contains a `cldk.yaml`, for Nexus e.g.:
 
   ```yaml
-  namespace: official   # dogu namespace in the registry, overridden by the .env in example 1
+  doguNamespace: official   # dogu namespace in the registry, overridden by the .env in example 1
   images:
-    nexus: {}           # builds ./Dockerfile, replaces values.images.nexus of mirror-patch-tpl.yaml
+    nexus: {}               # builds ./Dockerfile, replaces values.images.nexus of mirror-patch-tpl.yaml
   ```
 
 - The settings of your environment belong in the `.env` of the repository.

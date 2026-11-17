@@ -16,7 +16,7 @@ import (
 func TestPush_cluster(t *testing.T) {
 	t.Run("applies the dogu with the dev chart after pushing the chart", func(t *testing.T) {
 		pusher := newMockedPusher()
-		dir := writeProject(t, "namespace: official\n", nil)
+		dir := writeProject(t, "doguNamespace: official\n", nil)
 		kubeOpts := kube.Options{Context: "k3d-dev1", Namespace: "ecosystem"}
 
 		result, err := pusher.Push(context.Background(), Options{
@@ -38,7 +38,7 @@ func TestPush_cluster(t *testing.T) {
 
 	t.Run("applies the dev chart in the namespace of the options", func(t *testing.T) {
 		pusher := newMockedPusher()
-		dir := writeProject(t, "namespace: official\n", nil)
+		dir := writeProject(t, "doguNamespace: official\n", nil)
 
 		_, err := pusher.Push(context.Background(), Options{
 			Dir: dir, Registry: "localhost:5001", ClusterRegistry: "localhost:5001", Namespace: "personal",
@@ -53,7 +53,7 @@ func TestPush_cluster(t *testing.T) {
 	for _, opts := range []Options{{PlainHTTP: true}, {Insecure: true}} {
 		t.Run(fmt.Sprintf("marks the dev chart as insecure with %+v", opts), func(t *testing.T) {
 			pusher := newMockedPusher()
-			opts.Dir = writeProject(t, "namespace: official\n", nil)
+			opts.Dir = writeProject(t, "doguNamespace: official\n", nil)
 			opts.Registry = "localhost:5001"
 
 			_, err := pusher.Push(context.Background(), opts)
@@ -70,7 +70,7 @@ func TestPush_cluster(t *testing.T) {
 			return nil, kube.Info{}, errors.New(`context "dev3" not found`)
 		}
 		// The chart has lint errors, connecting to the cluster must abort first.
-		dir := writeProject(t, "namespace: official\n", map[string]string{
+		dir := writeProject(t, "doguNamespace: official\n", map[string]string{
 			"values.schema.json": `{"type": "object", "required": ["missingValue"]}`,
 		})
 
@@ -86,7 +86,7 @@ func TestPush_cluster(t *testing.T) {
 		pusher.doguClient.ApplyFunc = func(context.Context, dogu.DevChart) error {
 			return errors.New("admission webhook denied")
 		}
-		dir := writeProject(t, "namespace: official\n", nil)
+		dir := writeProject(t, "doguNamespace: official\n", nil)
 
 		_, err := pusher.Push(context.Background(), Options{Dir: dir, Registry: "localhost:5001"})
 

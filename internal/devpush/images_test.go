@@ -14,7 +14,7 @@ import (
 )
 
 // twoImagesYAML is a project file with two images, one with a custom build and one with the defaults.
-const twoImagesYAML = `namespace: official
+const twoImagesYAML = `doguNamespace: official
 images:
   sidecar:
     context: sidecar
@@ -84,7 +84,7 @@ func TestPush_images(t *testing.T) {
 
 	t.Run("does not check the builder without images", func(t *testing.T) {
 		pusher := newMockedPusher()
-		dir := writeProject(t, "namespace: official\n", nil)
+		dir := writeProject(t, "doguNamespace: official\n", nil)
 
 		result, err := pusher.Push(context.Background(), Options{Dir: dir, Registry: reg})
 
@@ -116,23 +116,23 @@ func TestPush_images(t *testing.T) {
 	}{
 		{
 			name:     "an image without an entry in the mirror patch template",
-			cldkYAML: "namespace: official\nimages:\n  unknown: {}\n",
+			cldkYAML: "doguNamespace: official\nimages:\n  unknown: {}\n",
 			wantErr:  `repository name "unknown"`,
 		},
 		{
 			name:     "an unknown key",
-			cldkYAML: "namespace: official\nimages:\n  nexus:\n    key: missing\n",
+			cldkYAML: "doguNamespace: official\nimages:\n  nexus:\n    key: missing\n",
 			wantErr:  `no entry "missing"`,
 		},
 		{
 			name:       "a missing mirror patch template",
-			cldkYAML:   "namespace: official\nimages:\n  nexus: {}\n",
+			cldkYAML:   "doguNamespace: official\nimages:\n  nexus: {}\n",
 			chartFiles: map[string]string{"mirror-patch-tpl.yaml": ""},
 			wantErr:    "mirror-patch-tpl.yaml",
 		},
 		{
 			name:       "lint errors",
-			cldkYAML:   "namespace: official\nimages:\n  nexus: {}\n",
+			cldkYAML:   "doguNamespace: official\nimages:\n  nexus: {}\n",
 			chartFiles: map[string]string{"values.schema.json": `{"type": "object", "required": ["missingValue"]}`},
 			wantErr:    "missingValue",
 		},

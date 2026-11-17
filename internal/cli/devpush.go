@@ -79,7 +79,7 @@ const devPushExample = `  # .env in the dogu repository, e.g. for a k3d cluster 
   CLDK_DEV_PLAIN_HTTP=true
 
   # cldk.yaml in the dogu repository
-  namespace: official
+  doguNamespace: official
   images:
     nexus: {}
 
@@ -127,7 +127,7 @@ func newDevPushCommand(pusher DevPusher) *cobra.Command {
 	// The values of the flags are resolved together with the environment, see resolveDevPushOptions.
 	cmd.Flags().String(flagRegistry, "", "address of the dev registry to push to as host[:port], required (env: "+envDevRegistry+")")
 	cmd.Flags().String(flagClusterRegistry, "", "address of the dev registry as seen from the cluster as host[:port], default --reg (env: "+envDevClusterRegistry+")")
-	cmd.Flags().String(flagDoguNamespace, "", "dogu namespace in the dev registry, default the namespace of cldk.yaml (env: "+envDevDoguNamespace+")")
+	cmd.Flags().String(flagDoguNamespace, "", "dogu namespace in the dev registry, default the doguNamespace of cldk.yaml (env: "+envDevDoguNamespace+")")
 	cmd.Flags().Bool(flagPlainHTTP, false, "allow unencrypted HTTP connections to the dev registry (env: "+envDevPlainHTTP+")")
 	cmd.Flags().Bool(flagInsecure, false, "allow TLS without certificate verification for the dev registry (env: "+envDevInsecure+")")
 	cmd.Flags().String(flagKubeContext, "", "kubeconfig context of the cluster, default the current context (env: "+envDevKubeContext+")")
@@ -192,7 +192,7 @@ func resolveDevPushOptions(r optionResolver) (devpush.Options, error) {
 	opts := devpush.Options{
 		PlainHTTP: plainHTTP,
 		Insecure:  insecure,
-		Namespace: r.str(flagDoguNamespace, envDevDoguNamespace, "namespace of cldk.yaml"),
+		Namespace: r.str(flagDoguNamespace, envDevDoguNamespace, "doguNamespace of cldk.yaml"),
 		Registry:  r.str(flagRegistry, envDevRegistry, ""),
 		Kube: kube.Options{
 			Context:   r.str(flagKubeContext, envDevKubeContext, "current context"),
