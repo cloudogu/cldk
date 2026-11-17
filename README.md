@@ -20,6 +20,46 @@ The chart refers to its images in `values.images` of its `mirror-patch-tpl.yaml`
 | `cldk dogu release`  | Releasing, e.g. in the CI    | Copies existing images unchanged to the registry and publishes the packed chart with their references.                                    |
 | `cldk dogu dev-push` | Developing against a cluster | Builds the images of the repository, pushes them and the chart under a new dev version and installs this version in a Kubernetes cluster. |
 
+## Installation
+
+Each [GitHub release](https://github.com/cloudogu/cldk/releases) provides `cldk` for Linux and macOS on `amd64` and `arm64`.
+
+### Download with `curl`
+
+The archives are named `cldk_<version>_<os>_<arch>.tar.gz` with `<os>` being `linux` or `darwin` and `<arch>` being `amd64` or `arm64`:
+
+```shell
+VERSION=0.1.0 OS=linux ARCH=amd64
+curl -fsSLO "https://github.com/cloudogu/cldk/releases/download/v${VERSION}/cldk_${VERSION}_${OS}_${ARCH}.tar.gz"
+curl -fsSLO "https://github.com/cloudogu/cldk/releases/download/v${VERSION}/checksums.txt"
+sha256sum --check --ignore-missing checksums.txt
+tar -xzf "cldk_${VERSION}_${OS}_${ARCH}.tar.gz" cldk
+sudo install cldk /usr/local/bin/
+```
+
+### Install with mise
+
+[mise](https://mise.jdx.dev/) picks the matching archive of the GitHub release:
+
+```shell
+mise use github:cloudogu/cldk@0.1.0
+```
+
+In a dogu repository, pin the version in its `mise.toml`:
+
+```toml
+[tools]
+"github:cloudogu/cldk" = "0.1.0"
+```
+
+### Install with `go install`
+
+This builds `cldk` from source and requires Go:
+
+```shell
+go install github.com/cloudogu/cldk@v0.1.0
+```
+
 ## Usage
 
 ```shell
@@ -309,6 +349,7 @@ make unit-test        # runs the unit tests, reports are written to target/unit-
 make integration-test # runs the tests tagged with "integration"
 make static-analysis  # runs golangci-lint
 make mocks            # generates mocks with mockery (configured in .mockery.yaml)
+make release-assets   # builds the release archives of all platforms and checksums.txt into target/dist
 make clean            # removes all build output
 ```
 
