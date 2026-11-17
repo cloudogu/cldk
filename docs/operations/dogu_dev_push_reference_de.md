@@ -38,6 +38,7 @@ Die Dev-Registry, der Zugriff darauf und der Cluster werden als Flags oder Umgeb
 
 - Boolesche Variablen nehmen die Werte von Gos `strconv.ParseBool` an, z.B. `true`, `false`, `1`, `0`; eine leere Variable gilt als nicht gesetzt.
 - Auf die Dev-Registry wird mit den gespeicherten Zugangsdaten von `docker login` oder `helm registry login` zugegriffen.
+- Mit `-v` loggt `dev-push` den aufgelösten Wert jeder Option zusammen mit ihrer Quelle, also Flag, Umgebungsvariable oder Standardwert.
 - Die Einstellungen der eigenen Umgebung gehören in die [`.env`](project_configuration_de.md#env) des Dogu-Repositorys, z.B. für einen k3d-Cluster mit lokaler Registry:
 
   ```shell

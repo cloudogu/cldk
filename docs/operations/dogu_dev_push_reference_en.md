@@ -38,6 +38,7 @@ The dev registry, its access and the cluster are given as flags or environment v
 
 - Boolean variables take the values of Go's `strconv.ParseBool`, e.g. `true`, `false`, `1`, `0`; an empty variable counts as not set.
 - The dev registry is accessed with the stored credentials of `docker login` or `helm registry login`.
+- With `-v`, `dev-push` logs the resolved value of each option together with its source, i.e. flag, environment variable or default.
 - Put the settings of your environment into the [`.env`](project_configuration_en.md#env) of the dogu repository, e.g. for a k3d cluster with a local registry:
 
   ```shell

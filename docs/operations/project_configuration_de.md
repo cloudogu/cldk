@@ -29,4 +29,4 @@ Unbekannte Felder in der `cldk.yaml` brechen den Befehl ab, damit Tippfehler nic
 - Jeder Befehl lädt zuerst die `.env` des Projektverzeichnisses in seine Umgebung, z.B. `CLDK_USER`/`CLDK_PASSWORD` für `release`.
 - Variablen, die schon in der Umgebung gesetzt sind, auch leer, haben Vorrang vor der `.env`; Flags haben Vorrang vor beiden.
 - Eine fehlende `.env` ist kein Problem, eine `.env`, die sich nicht parsen lässt, bricht den Befehl ab.
-- `cldk -v` loggt die Namen der Variablen aus der `.env`, nie ihre Werte; nur `dev-push` loggt die aufgelösten Werte seiner eigenen Einstellungen.
+- Das Debug-Logging mit `-v`, z.B. `cldk -v dogu dev-push`, zeigt die Namen der Variablen aus der `.env`, nie ihre Werte.

@@ -29,4 +29,4 @@ Unknown fields in `cldk.yaml` abort the command, so that typos are not silently 
 - Every command first loads the `.env` of the project directory into its environment, e.g. `CLDK_USER`/`CLDK_PASSWORD` for `release`.
 - Variables that are already set in the environment, even if empty, take precedence over the `.env`; flags take precedence over both.
 - A missing `.env` is fine, a `.env` that cannot be parsed aborts the command.
-- `cldk -v` logs the names of the variables taken from the `.env`, never their values; only `dev-push` logs the resolved values of its own settings.
+- Debug logging with `-v`, e.g. `cldk -v dogu dev-push`, shows the names of the variables taken from the `.env`, never their values.
