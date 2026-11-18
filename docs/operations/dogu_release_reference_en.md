@@ -175,19 +175,25 @@ Target registry credentials are selected in this order:
 
 Credentials are never persisted by cldk.
 
-## Environment variables
+## Options
 
-The settings of the target registry and of the builds can be given as flags or environment variables, also in the [`.env` of the project directory](project_configuration_en.md#env); flags take precedence:
+The settings of the target registry and of the builds can also be given as environment variables, including in the [`.env` of the project directory](project_configuration_en.md#env); flags take precedence:
 
-| Flag                       | Environment variable        | Description                                                               |
-|----------------------------|-----------------------------|---------------------------------------------------------------------------|
-| `--reg <host[:port]>`      | `CLDK_REG`                  | target registry, default `registry.cloudogu.com`                          |
-| `--dogu-namespace <ns>`    | `CLDK_DOGU_NAMESPACE`       | target namespace; project release: default `doguNamespace` of `cldk.yaml` |
-| `--plain-http`             | `CLDK_PLAIN_HTTP`           | target registry without TLS                                               |
-| `--insecure`               | `CLDK_INSECURE`             | target registry with an untrusted (e.g. self-signed) certificate          |
-| `--user`/`--pass`          | `CLDK_USER`/`CLDK_PASSWORD` | credentials of the target registry, only as a pair from one source        |
-| `--builder <bin>`          | `CLDK_BUILDER`              | project release: Docker compatible build CLI, default `docker`            |
-| `--platform <os/arch>`     | `CLDK_PLATFORM`             | project release: platform the images are built for                        |
-| `--no-cache`               | `CLDK_NO_CACHE`             | project release: build without the cache of the builder                   |
+| Flag                                 | Environment variable        | Description                                                                                                               |
+|--------------------------------------|-----------------------------|---------------------------------------------------------------------------------------------------------------------------|
+| `--reg <host[:port]>`                | `CLDK_REG`                  | target registry, default `registry.cloudogu.com`                                                                          |
+| `--dogu-namespace <ns>`              | `CLDK_DOGU_NAMESPACE`       | dogu namespace in the target registry; project release: default `doguNamespace` of `cldk.yaml`, archive release: required |
+| `--plain-http`                       | `CLDK_PLAIN_HTTP`           | target registry without TLS                                                                                               |
+| `--insecure`                         | `CLDK_INSECURE`             | target registry with an untrusted (e.g. self-signed) certificate                                                          |
+| `--user`/`--pass`                    | `CLDK_USER`/`CLDK_PASSWORD` | credentials of the target registry, only as a pair from one source                                                        |
+| `--builder <bin>`                    | `CLDK_BUILDER`              | project release: Docker compatible build CLI, default `docker`                                                            |
+| `--platform <os/arch>`               | `CLDK_PLATFORM`             | project release: platform the images are built for                                                                        |
+| `--no-cache`                         | `CLDK_NO_CACHE`             | project release: build without the cache of the builder                                                                   |
+| `--build-arg KEY[=VALUE]`            |                             | project release: build argument for all images, overrides `buildArgs` of `cldk.yaml`, repeatable                          |
+| `--tag <name>=<tag>`                 |                             | project release: release tag of an image of `cldk.yaml`, overrides its `tag:`, repeatable                                 |
+| `-i`, `--image <ref>[=<name>:<tag>]` |                             | copy an image instead of building it or in addition, repeatable                                                           |
+| `--image-key <name>=<key>`           |                             | assign an image of `-i` to `values.images.<key>` in `mirror-patch-tpl.yaml`, repeatable                                   |
+| `--force`                            |                             | overwrite existing release tags, image tags with another digest and chart versions                                        |
+| `--dry-run`                          |                             | check everything and print the plan, but build and push nothing                                                           |
 
 `cldk -v` logs each resolved value with its source, the password masked; check it and the references of `--dry-run` before a release, so that a forgotten line in the `.env` does not redirect it.

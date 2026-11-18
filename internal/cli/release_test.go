@@ -246,8 +246,8 @@ func TestReleaseCommandValidation(t *testing.T) {
 		{"--platform with a chart archive", []string{"dogu", "release", "--dogu-namespace", "testing", "--platform", "linux/arm64", "nexus-1.2.3.tgz"}, "--platform only applies"},
 		{"--no-cache with a chart archive", []string{"dogu", "release", "--dogu-namespace", "testing", "--no-cache", "nexus-1.2.3.tgz"}, "--no-cache only applies"},
 		{"--build-arg with a chart archive", []string{"dogu", "release", "--dogu-namespace", "testing", "--build-arg", "FOO=bar", "nexus-1.2.3.tgz"}, "--build-arg only applies"},
-		{"missing namespace", []string{"dogu", "release", "nexus-1.2.3.tgz"}, "a chart archive needs the namespace, give it with --dogu-namespace or CLDK_DOGU_NAMESPACE"},
-		{"empty namespace", []string{"dogu", "release", "--dogu-namespace", "", "nexus-1.2.3.tgz"}, "a chart archive needs the namespace"},
+		{"missing namespace", []string{"dogu", "release", "nexus-1.2.3.tgz"}, "a chart archive needs the dogu namespace, give it with --dogu-namespace or CLDK_DOGU_NAMESPACE"},
+		{"empty namespace", []string{"dogu", "release", "--dogu-namespace", "", "nexus-1.2.3.tgz"}, "a chart archive needs the dogu namespace"},
 	}
 
 	for _, tt := range tests {

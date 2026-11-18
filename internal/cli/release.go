@@ -57,7 +57,7 @@ release tag (tag: in cldk.yaml or --tag) and pushes the chart rewritten to them.
 login, e.g. from "docker login". An image given with -i is copied instead of built.
 
 With a chart archive (.tgz) as argument, release copies the images given with -i and pushes the chart rewritten to
-them. The namespace is required then.
+them. The dogu namespace is required then.
 
 All targets are checked before anything is built or pushed. Existing tags and chart versions abort the release unless
 --force is given.`
@@ -136,7 +136,7 @@ func runArchiveRelease(cmd *cobra.Command, r optionResolver, releaser Releaser, 
 	}
 
 	if target.Namespace == "" {
-		return fmt.Errorf("a chart archive needs the namespace, give it with --%s or %s", flagDoguNamespace, envDoguNamespace)
+		return fmt.Errorf("a chart archive needs the dogu namespace, give it with --%s or %s", flagDoguNamespace, envDoguNamespace)
 	}
 
 	opts, dryRun, err := resolveReleaseOptions(r)
