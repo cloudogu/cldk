@@ -50,7 +50,7 @@ type Releaser interface {
 	ReleaseProject(ctx context.Context, target oci.Target, opts release.ProjectOptions) (release.Result, error)
 }
 
-const releaseLong = `Release a dogu v3 to a namespace of the target registry.
+const releaseLong = `Release a dogu to a namespace of the target registry.
 
 Without argument, release builds the images of cldk.yaml in the project directory (--dir), pushes them with their
 release tag (tag: in cldk.yaml or --tag) and pushes the chart rewritten to them. The build CLI pushes with its own
@@ -89,7 +89,7 @@ const releaseExample = `  # cldk.yaml in the dogu repository
 func newReleaseCommand(releaser Releaser) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "release [flags] [<chart.tgz>]",
-		Short:   "Release a dogu v3 from its project directory or a packed helm chart",
+		Short:   "Release a dogu from its project directory or a packed helm chart",
 		Long:    releaseLong,
 		Example: releaseExample,
 		Args:    cobra.MaximumNArgs(1),

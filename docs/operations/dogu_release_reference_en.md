@@ -1,6 +1,6 @@
 # `cldk dogu release` reference
 
-`cldk dogu release` publishes a dogu v3, its chart and its images, to a namespace of a registry.
+`cldk dogu release` publishes a dogu, its chart and its images, to a namespace of a registry.
 For a step-by-step guide with examples with `registry.cloudogu.com`, see [Releasing a dogu with `cldk dogu release`](releasing_a_dogu_en.md).
 
 `dogu release` has two modes:

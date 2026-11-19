@@ -1,4 +1,4 @@
-// Package project reads a dogu v3 project directory and builds its images.
+// Package project reads a dogu project directory and builds its images.
 package project
 
 import (

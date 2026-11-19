@@ -1,4 +1,4 @@
-// Package release publishes dogu v3 helm charts.
+// Package release publishes dogu helm charts.
 package release
 
 import (

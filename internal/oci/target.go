@@ -1,4 +1,4 @@
-// Package oci accesses the OCI registries dogu v3 images and charts are published to.
+// Package oci accesses the OCI registries dogu images and charts are published to.
 package oci
 
 import (

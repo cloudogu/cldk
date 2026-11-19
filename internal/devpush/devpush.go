@@ -1,4 +1,4 @@
-// Package devpush pushes a dogu v3 under development from its project directory to a dev registry.
+// Package devpush pushes a dogu under development from its project directory to a dev registry.
 package devpush
 
 import (

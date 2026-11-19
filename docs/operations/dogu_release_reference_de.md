@@ -1,6 +1,6 @@
 # Referenz von `cldk dogu release`
 
-`cldk dogu release` veröffentlicht ein v3-Dogu, also sein Chart und seine Images, in einem Namespace einer Registry.
+`cldk dogu release` veröffentlicht ein Dogu, also sein Chart und seine Images, in einem Namespace einer Registry.
 Eine Schritt-für-Schritt-Anleitung mit Beispielen für `registry.cloudogu.com` steht unter [Ein Dogu mit `cldk dogu release` veröffentlichen](releasing_a_dogu_de.md).
 
 `dogu release` hat zwei Modi:

@@ -1,6 +1,8 @@
 # cldk
 Cloudogu (LOP) Development Kit helps developers in releasing and developing their Dogu helm-charts.
 
+> cldk supports dogu v3 only; classic dogus (v2) are not supported.
+
 ## Overview
 
 A dogu v3 is a Helm chart plus its container images, both stored in an OCI registry:
@@ -63,12 +65,12 @@ go install github.com/cloudogu/cldk@v0.1.0
 ## Usage
 
 ```shell
-cldk dogu release   # release the dogu v3 in the working directory to registry.cloudogu.com, building its images
+cldk dogu release   # release the dogu in the working directory to registry.cloudogu.com, building its images
 cldk dogu release --dry-run   # print the plan of the release without building or pushing anything
 cldk dogu release --dogu-namespace <ns> <chart.tgz>   # release a packed dogu chart to registry.cloudogu.com
 cldk dogu release --dogu-namespace <ns> -i <image> ... <chart.tgz>   # release the chart together with its images
 cldk dogu release --dry-run --dogu-namespace <ns> -i <image> ... <chart.tgz>   # print the plan without pushing anything
-cldk dogu dev-push   # push the dogu v3 under development in the working directory and install it in the current cluster
+cldk dogu dev-push   # push the dogu under development in the working directory and install it in the current cluster
 cldk version        # print the version and commit of cldk
 cldk -v <command>   # enable debug logging of cldk, debug output of libraries like Helm is left out
 cldk -d <dir> <command>   # use <dir> as project directory instead of the working directory
@@ -78,7 +80,7 @@ cldk dogu release --help   # show the options of a command
 
 ### `dogu release`
 
-`cldk dogu release` publishes a dogu v3, its chart and its images, to a registry, by default `registry.cloudogu.com`.
+`cldk dogu release` publishes a dogu, its chart and its images, to a registry, by default `registry.cloudogu.com`.
 Without argument, it builds the images of the project directory with their release tags and publishes them with the chart of the project directory.
 With a packed chart as argument, it copies the images given with `-i` unchanged with the same digest; the chart gets the new image references.
 
@@ -87,7 +89,7 @@ With a packed chart as argument, it copies the images given with `-i` unchanged 
 
 ### `dogu dev-push`
 
-`cldk dogu dev-push` pushes the working state of a dogu v3 repository under a new dev version to a dev registry and installs it in a cluster.
+`cldk dogu dev-push` pushes the working state of a dogu repository under a new dev version to a dev registry and installs it in a cluster.
 The project directory is not changed.
 
 - Guide: [Deploying a dogu with `cldk dogu dev-push`](docs/operations/deploying_a_dogu_with_dev_push_en.md) ([Deutsch](docs/operations/deploying_a_dogu_with_dev_push_de.md))

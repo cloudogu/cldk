@@ -1,6 +1,6 @@
 # Ein Dogu mit `cldk dogu release` veröffentlichen
 
-`cldk dogu release` veröffentlicht ein v3-Dogu, also sein Chart und seine Images, in einem Namespace einer Registry.
+`cldk dogu release` veröffentlicht ein Dogu, also sein Chart und seine Images, in einem Namespace einer Registry.
 Es gibt zwei Modi:
 
 - **Projekt-Release** (ohne Argument): `cldk` baut die Images des Dogu-Repositorys und veröffentlicht sie zusammen mit dem Chart des Repositorys.

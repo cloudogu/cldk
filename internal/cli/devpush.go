@@ -51,7 +51,7 @@ type DevPusher interface {
 	Push(ctx context.Context, opts devpush.Options) (devpush.Result, error)
 }
 
-const devPushLong = `Push a dogu v3 under development to a dev registry and install it in a cluster.
+const devPushLong = `Push a dogu under development to a dev registry and install it in a cluster.
 
 dev-push reads cldk.yaml in the project directory and creates a new dev version <Chart.yaml version>-dev.<UTC timestamp>.
 It builds each image of cldk.yaml with the build CLI (docker by default), tags it with the dev version and pushes it
@@ -100,7 +100,7 @@ const devPushExample = `  # .env in the dogu repository, e.g. for a k3d cluster 
 func newDevPushCommand(pusher DevPusher) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "dev-push [flags]",
-		Short:   "Build, push and install a dogu v3 under development in a cluster",
+		Short:   "Build, push and install a dogu under development in a cluster",
 		Long:    devPushLong,
 		Example: devPushExample,
 		Args: func(_ *cobra.Command, args []string) error {

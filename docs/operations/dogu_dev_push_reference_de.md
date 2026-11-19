@@ -1,6 +1,6 @@
 # Referenz von `cldk dogu dev-push`
 
-`cldk dogu dev-push` pusht den Arbeitsstand eines v3-Dogu-Repositorys unter einer neuen Dev-Version in eine Dev-Registry und installiert ihn in einem Cluster.
+`cldk dogu dev-push` pusht den Arbeitsstand eines Dogu-Repositorys unter einer neuen Dev-Version in eine Dev-Registry und installiert ihn in einem Cluster.
 Eine Schritt-für-Schritt-Anleitung mit den Voraussetzungen im Cluster, Beispielen mit `registry.cloudogu.com` und einem lokalen k3d-Cluster und dem Weg zurück zum regulären Dogu steht unter [Ein Dogu mit `cldk dogu dev-push` in einen Cluster bringen](deploying_a_dogu_with_dev_push_de.md).
 Das Projektverzeichnis braucht eine `cldk.yaml`, siehe [Projektkonfiguration](project_configuration_de.md#cldkyaml).
 

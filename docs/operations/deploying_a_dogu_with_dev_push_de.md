@@ -1,6 +1,6 @@
 # Ein Dogu mit `cldk dogu dev-push` in einen Cluster bringen
 
-`cldk dogu dev-push` bringt den Arbeitsstand eines v3-Dogus in einen Cluster, ohne das Dogu zu releasen.
+`cldk dogu dev-push` bringt den Arbeitsstand eines Dogus in einen Cluster, ohne das Dogu zu releasen.
 Der Befehl baut die Images aus der `cldk.yaml`, pusht sie und das Chart unter einer neuen Dev-Version in eine Registry und legt die Dogu-CR an oder aktualisiert sie.
 Der Dogu-Operator installiert das Dogu dann aus diesem Chart statt aus der Dogu-Registry.
 

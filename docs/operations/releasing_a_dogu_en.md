@@ -1,6 +1,6 @@
 # Releasing a dogu with `cldk dogu release`
 
-`cldk dogu release` publishes a dogu v3, its chart and its images, to a namespace of a registry.
+`cldk dogu release` publishes a dogu, its chart and its images, to a namespace of a registry.
 It has two modes:
 
 - **Project release** (without argument): `cldk` builds the images of the dogu repository and releases them together with the chart of the repository.
