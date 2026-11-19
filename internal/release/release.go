@@ -1,0 +1,309 @@
+// Package release publishes dogu helm charts.
+package release
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+
+	helmchart "helm.sh/helm/v4/pkg/chart/v2"
+
+	"github.com/cloudogu/cldk/internal/build"
+	"github.com/cloudogu/cldk/internal/chart"
+	"github.com/cloudogu/cldk/internal/oci"
+	"github.com/cloudogu/cldk/internal/project"
+)
+
+// ArchiveOptions are the settings of a release of a chart archive besides the target.
+type ArchiveOptions struct {
+	// Images are the images to release together with the chart, each given as "<source>" or "<source>=<target name>:<tag>",
+	// e.g. "ci-registry.example.com/nexus:3.96.4" or "localhost:5001/local-dev/nexus/main:3.96.4=nexus:3.96.4".
+	// Each image is copied to the image repository of the target with the given name and tag,
+	// by default the last path segment of its source repository and its source tag.
+	Images []string
+	// ImageKeys assign images explicitly to entries of values.images in the mirror patch template of the chart, each
+	// given as "<target name>=<key>", e.g. "nexus=nexus".
+	// An image without an explicit key is assigned to the entry whose repository has its target name.
+	ImageKeys []string
+	// Force overwrites image tags with another digest and an already released chart version in the target.
+	// Without it, both are conflicts that abort the release before anything is pushed.
+	Force bool
+}
+
+// Status is the state of an image or chart in the target.
+type Status int
+
+const (
+	// StatusPushed means the target did not exist, so that it is pushed.
+	StatusPushed Status = iota
+	// StatusSkipped means the target already has the image with the same digest, so that it is not pushed again.
+	StatusSkipped
+	// StatusOverwritten means the target already exists with other content and is overwritten (Force of the options).
+	StatusOverwritten
+	// StatusConflict means the target already exists with other content, so that it cannot be released without
+	// Force of the options. Only a Plan has it.
+	StatusConflict
+)
+
+// Plan describes what a release would build and push, without building or pushing anything.
+type Plan struct {
+	// BuiltImages are the images of cldk.yaml that would be built and pushed, ordered by name.
+	// Only a release from the project directory has BuiltImages.
+	BuiltImages []BuiltImage
+	// Images are the planned images in the order of Images of the options.
+	Images []PlannedImage
+	// ChartReference is the full reference of the chart without scheme, e.g.
+	// "registry.cloudogu.com/official/dogu/v3/charts/nexus:1.2.3".
+	ChartReference string
+	// ChartStatus is the state of the chart in the target. A chart is never skipped.
+	ChartStatus Status
+}
+
+// PlannedImage is an image as it would be released.
+type PlannedImage struct {
+	// Source is the source reference of the image as given in Images of the options, without an explicit target.
+	Source string
+	// Reference is the full reference of the image in the target, e.g.
+	// "registry.cloudogu.com/official/dogu/v3/images/nexus:3.96.4".
+	Reference string
+	// Digest is the digest of the manifest or index of the source.
+	Digest string
+	// ExistingDigest is the digest the target already has, empty if the target does not exist yet.
+	ExistingDigest string
+	// Status is the state of the image in the target.
+	Status Status
+}
+
+// Conflicts returns an error for each image and the chart that cannot be released without Force of the options,
+// or nil if there are none.
+func (p Plan) Conflicts() error {
+	var errs []error
+
+	for _, img := range p.BuiltImages {
+		if img.Status == StatusConflict {
+			errs = append(errs, fmt.Errorf("image %s is already released, use --force to overwrite it", img.Reference))
+		}
+	}
+
+	for _, img := range p.Images {
+		if img.Status == StatusConflict {
+			errs = append(errs, fmt.Errorf("image %s already exists with digest %s instead of %s of %s, use --force to overwrite it",
+				img.Reference, img.ExistingDigest, img.Digest, img.Source))
+		}
+	}
+
+	if p.ChartStatus == StatusConflict {
+		errs = append(errs, fmt.Errorf("chart %s is already released, use --force to overwrite it", p.ChartReference))
+	}
+
+	return errors.Join(errs...)
+}
+
+// Result describes what has been released.
+type Result struct {
+	// BuiltImages are the built and released images of cldk.yaml, ordered by name.
+	// Only a release from the project directory has BuiltImages.
+	BuiltImages []BuiltImage
+	// Images are the released images in the order of Images of the options.
+	Images []ReleasedImage
+	// ChartReference is the full reference of the released chart without scheme, e.g.
+	// "registry.cloudogu.com/official/dogu/v3/charts/nexus:1.2.3".
+	ChartReference string
+	// ChartStatus is the state of the chart in the target. A chart is never skipped.
+	ChartStatus Status
+	// ChartDigest is the manifest digest of the released chart, empty if the chart has not been released.
+	ChartDigest string
+}
+
+// Releaser publishes dogu releases.
+type Releaser struct {
+	newBuilder func(binary string) Builder
+}
+
+// NewReleaser creates a Releaser.
+func NewReleaser() *Releaser {
+	return &Releaser{
+		newBuilder: func(binary string) Builder {
+			return build.New(binary)
+		},
+	}
+}
+
+// Plan computes the release of the packed chart archive (.tgz) at chartPath to the target including all checks of the
+// sources and targets, but pushes nothing. Conflicts in the target are part of the plan, see Plan.Conflicts.
+func (r *Releaser) Plan(ctx context.Context, chartPath string, target oci.Target, opts ArchiveOptions) (Plan, error) {
+	p, err := newReleasePlan(ctx, chartPath, target, opts)
+	if err != nil {
+		return Plan{}, err
+	}
+
+	return p.summary(), nil
+}
+
+// Release publishes the packed chart archive (.tgz) at chartPath to the target.
+// It pushes nothing if the plan has conflicts. The images are released before the chart, so that a released chart
+// never refers to missing images.
+// If a push fails, the result holds the images released before the failure and no ChartDigest, so that the caller
+// can report what already is in the target.
+func (r *Releaser) Release(ctx context.Context, chartPath string, target oci.Target, opts ArchiveOptions) (Result, error) {
+	p, err := newReleasePlan(ctx, chartPath, target, opts)
+	if err != nil {
+		return Result{}, err
+	}
+
+	// All targets are checked before the first push, so that a conflict does not leave a partial release.
+	if err = p.summary().Conflicts(); err != nil {
+		return Result{}, err
+	}
+
+	return p.push(ctx)
+}
+
+// releasePlan is a computed release with everything needed to build and push it.
+type releasePlan struct {
+	client *oci.Client
+	// builder builds and pushes the built images; nil without images to build.
+	builder project.Builder
+	// builderBinary is the build CLI of the builder.
+	builderBinary string
+	// registry is the target registry.
+	registry string
+	// built are the images of cldk.yaml to build, ordered by name.
+	built  []checkedBuild
+	images []checkedImage
+	// archive is the chart archive to push, rewritten to the targets of the images.
+	archive     []byte
+	chartRef    string
+	chartStatus Status
+}
+
+// newReleasePlan reads and rewrites the chart, resolves the images and checks all targets without pushing anything.
+func newReleasePlan(ctx context.Context, chartPath string, target oci.Target, opts ArchiveOptions) (*releasePlan, error) {
+	archive, err := os.ReadFile(chartPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read chart: %w", err)
+	}
+
+	c, err := chart.LoadArchive(archive)
+	if err != nil {
+		return nil, fmt.Errorf("%s is not a valid chart archive: %w", chartPath, err)
+	}
+
+	specs, err := parseImages(opts.Images, target)
+	if err != nil {
+		return nil, err
+	}
+
+	keys, err := parseImageKeys(opts.ImageKeys, specs)
+	if err != nil {
+		return nil, err
+	}
+
+	resolved, err := resolveImages(ctx, specs)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(specs) > 0 {
+		archive, err = rewriteChartForImages(c, specs, keys)
+		if err != nil {
+			return nil, fmt.Errorf("failed to rewrite chart %s: %w", chartPath, err)
+		}
+	}
+
+	client, err := oci.NewClient(target)
+	if err != nil {
+		return nil, err
+	}
+
+	p, err := checkTargets(ctx, client, resolved, target.ChartRepository(c.Metadata.Name)+":"+c.Metadata.Version, opts.Force)
+	if err != nil {
+		return nil, err
+	}
+
+	p.archive = archive
+
+	return p, nil
+}
+
+// checkTargets checks the targets of the copied images and of the chart and returns the plan.
+func checkTargets(ctx context.Context, client *oci.Client, resolved []resolvedImage, chartRef string, force bool) (*releasePlan, error) {
+	images, err := checkImages(ctx, client, resolved, force)
+	if err != nil {
+		return nil, err
+	}
+
+	chartStatus, err := checkChart(ctx, client, chartRef, force)
+	if err != nil {
+		return nil, err
+	}
+
+	return &releasePlan{client: client, images: images, chartRef: chartRef, chartStatus: chartStatus}, nil
+}
+
+// summary returns the plan as seen from outside.
+func (p *releasePlan) summary() Plan {
+	var built []BuiltImage
+
+	for _, img := range p.built {
+		built = append(built, img.planned())
+	}
+
+	planned := make([]PlannedImage, 0, len(p.images))
+
+	for _, img := range p.images {
+		planned = append(planned, img.planned())
+	}
+
+	return Plan{BuiltImages: built, Images: planned, ChartReference: p.chartRef, ChartStatus: p.chartStatus}
+}
+
+// push builds and pushes the images to build, copies the other images in their order and then pushes the chart.
+// If a push fails, it returns the error together with what has been released before.
+func (p *releasePlan) push(ctx context.Context) (Result, error) {
+	result := Result{ChartReference: p.chartRef, ChartStatus: p.chartStatus}
+
+	var err error
+
+	result.BuiltImages, err = p.buildAndPushImages(ctx)
+	if err != nil {
+		return result, err
+	}
+
+	for _, img := range p.images {
+		released, err := pushCheckedImage(ctx, p.client, img)
+		if err != nil {
+			return result, err
+		}
+
+		result.Images = append(result.Images, released)
+	}
+
+	slog.Debug("pushing chart", "target", p.chartRef)
+
+	digest, err := p.client.PushChart(ctx, p.archive, p.chartRef)
+	if err != nil {
+		return result, err
+	}
+
+	result.ChartDigest = digest
+
+	return result, nil
+}
+
+// rewriteChartForImages points the chart to the target references of the images and returns the repacked archive.
+func rewriteChartForImages(c *helmchart.Chart, images []imageSpec, keys map[string]string) ([]byte, error) {
+	targets := make(map[string]string, len(images))
+
+	for _, img := range images {
+		targets[img.targetName] = img.target.String()
+	}
+
+	if err := project.RewriteImages(c, targets, keys); err != nil {
+		return nil, err
+	}
+
+	return chart.Pack(c)
+}
