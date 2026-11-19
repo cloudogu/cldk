@@ -12,6 +12,7 @@ import (
 
 	"github.com/cloudogu/cldk/internal/dogu"
 	"github.com/cloudogu/cldk/internal/kube"
+	"github.com/cloudogu/cldk/internal/project"
 )
 
 func TestPlan(t *testing.T) {
@@ -28,7 +29,8 @@ func TestPlan(t *testing.T) {
 		kubeOpts := kube.Options{Context: "k3d-dev1", Namespace: "ecosystem"}
 
 		plan, err := pusher.Plan(context.Background(), Options{
-			Dir: dir, Registry: reg, ClusterRegistry: clusterReg, PlainHTTP: true, Kube: kubeOpts, Builder: "podman",
+			Dir: dir, Registry: reg, ClusterRegistry: clusterReg, PlainHTTP: true, Kube: kubeOpts,
+			Build: project.BuildOptions{Builder: "podman"},
 		})
 
 		require.NoError(t, err)

@@ -6,6 +6,7 @@ import (
 	"github.com/cloudogu/cldk/internal/dogu"
 	"github.com/cloudogu/cldk/internal/kube"
 	"github.com/cloudogu/cldk/internal/oci"
+	"github.com/cloudogu/cldk/internal/project"
 )
 
 // Plan describes what a dev push would build, push and apply, without doing it.
@@ -32,7 +33,7 @@ type Plan struct {
 type devPushPlan struct {
 	version     string
 	images      imagePlan
-	builder     Builder
+	builder     project.Builder
 	doguClient  DoguClient
 	cluster     kube.Info
 	chartPusher ChartPusher
@@ -45,7 +46,7 @@ type devPushPlan struct {
 // newDevPushPlan loads the project and its chart, checks the builder, connects to the cluster, rewrites and lints the
 // chart, without building, pushing or applying anything.
 func (p *Pusher) newDevPushPlan(ctx context.Context, opts Options) (*devPushPlan, error) {
-	project, target, err := loadProject(opts)
+	file, target, err := loadProject(opts)
 	if err != nil {
 		return nil, err
 	}
@@ -55,15 +56,15 @@ func (p *Pusher) newDevPushPlan(ctx context.Context, opts Options) (*devPushPlan
 		return nil, err
 	}
 
-	c, version, err := p.loadChart(opts.Dir, project)
+	c, version, err := p.loadChart(opts.Dir, file)
 	if err != nil {
 		return nil, err
 	}
 
 	clusterTarget := oci.Target{Registry: opts.ClusterRegistry, Namespace: target.Namespace}
-	images := planImages(opts, project, target, clusterTarget, version)
+	images := planImages(opts, file, target, clusterTarget, version)
 
-	builder, err := p.createBuilder(ctx, opts.Builder, images.toBuild())
+	builder, err := project.CheckBuilder(ctx, p.newProjectBuilder, opts.Build.Builder, images.built)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +74,7 @@ func (p *Pusher) newDevPushPlan(ctx context.Context, opts Options) (*devPushPlan
 		return nil, err
 	}
 
-	archive, err := prepareChart(c, version, images.images, values)
+	archive, err := prepareChart(c, version, images, values)
 	if err != nil {
 		return nil, err
 	}
@@ -105,20 +106,18 @@ func (p *Pusher) newDevPushPlan(ctx context.Context, opts Options) (*devPushPlan
 
 // summary returns the plan as seen from outside.
 func (dp *devPushPlan) summary() Plan {
-	toBuild := dp.images.toBuild()
-	images := make([]PushedImage, 0, len(toBuild))
-
-	for _, img := range toBuild {
-		images = append(images, PushedImage{Name: img.name, Reference: img.request.Tag})
-	}
-
 	return Plan{
 		Version:        dp.version,
-		Images:         images,
-		ReplacedImages: dp.images.replaced(),
+		Images:         dp.images.pushed(),
+		ReplacedImages: dp.images.replaced,
 		SkippedImages:  dp.images.skipped,
 		ChartReference: dp.chartRef,
 		DevChart:       dp.devChart,
 		Cluster:        dp.cluster,
 	}
+}
+
+// newProjectBuilder creates the builder for the build CLI.
+func (p *Pusher) newProjectBuilder(binary string) project.Builder {
+	return p.newBuilder(binary)
 }

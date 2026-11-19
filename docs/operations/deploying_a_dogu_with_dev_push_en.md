@@ -1,6 +1,6 @@
 # Deploying a dogu to a cluster with `cldk dogu dev-push`
 
-`cldk dogu dev-push` brings the working state of a dogu v3 into a cluster without releasing the dogu.
+`cldk dogu dev-push` brings the working state of a dogu into a cluster without releasing the dogu.
 It builds the images of the `cldk.yaml`, pushes them and the chart under a new dev version to a registry, and creates or updates the dogu resource.
 The dogu operator then installs the dogu from this chart instead of the dogu registry.
 

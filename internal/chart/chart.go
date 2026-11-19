@@ -1,4 +1,4 @@
-// Package chart loads, rewrites and packs dogu v3 helm charts.
+// Package chart loads, rewrites and packs dogu helm charts.
 package chart
 
 import (

@@ -1,6 +1,6 @@
 # `cldk dogu dev-push` reference
 
-`cldk dogu dev-push` pushes the working state of a dogu v3 repository under a new dev version to a dev registry and installs it in a cluster.
+`cldk dogu dev-push` pushes the working state of a dogu repository under a new dev version to a dev registry and installs it in a cluster.
 For a step-by-step guide with the prerequisites in the cluster, examples with `registry.cloudogu.com` and a local k3d cluster, and how to return to the regular dogu, see [Deploying a dogu with `cldk dogu dev-push`](deploying_a_dogu_with_dev_push_en.md).
 The project directory needs a `cldk.yaml`, see [Project configuration](project_configuration_en.md#cldkyaml).
 
@@ -27,9 +27,9 @@ The dev registry, its access and the cluster are given as flags or environment v
 | `--insecure`                   | `CLDK_DEV_INSECURE`       | dev registry with an untrusted (e.g. self-signed) certificate                          |
 | `--kube-context <name>`        | `CLDK_DEV_KUBE_CONTEXT`   | kubeconfig context of the cluster, default the current context                         |
 | `--kube-namespace <ns>`        | `CLDK_DEV_KUBE_NAMESPACE` | Kubernetes namespace of the dogu, default the namespace of the context, else `default` |
-| `--builder <bin>`              | `CLDK_DEV_BUILDER`        | Docker compatible build CLI, default `docker`                                          |
-| `--platform <os/arch>`         | `CLDK_DEV_PLATFORM`       | platform the images are built for, passed to the builder                               |
-| `--no-cache`                   | `CLDK_DEV_NO_CACHE`       | build the images without the cache of the builder, e.g. to enforce a clean build       |
+| `--builder <bin>`              | `CLDK_BUILDER`            | Docker compatible build CLI, default `docker`; shared with `release`                   |
+| `--platform <os/arch>`         | `CLDK_PLATFORM`           | platform the images are built for, passed to the builder; shared with `release`        |
+| `--no-cache`                   | `CLDK_NO_CACHE`           | build the images without the cache of the builder, e.g. to enforce a clean build       |
 | `--values <file>`              | `CLDK_DEV_VALUES`         | YAML file with Helm values for the dogu, relative to the project directory             |
 | `--build-arg KEY[=VALUE]`      |                           | build argument for all images, repeatable                                              |
 | `--replace-image <name>=<ref>` |                           | do not build the image `<name>`, write `<ref>` into the chart instead, repeatable      |
@@ -49,7 +49,7 @@ The dev registry, its access and the cluster are given as flags or environment v
 
 ## Building images
 
-- `dev-push` builds the images of `cldk.yaml` one after another, ordered by name, and pushes each right after its build:
+- `dev-push` builds the images of `cldk.yaml` one after another, ordered by name, and then pushes them in the same order:
   - `<builder> build -f <dockerfile> -t <reg>/<namespace>/dogu/v3/images/<name>:<dev-version> [--target …] [--build-arg …] [--platform …] [--no-cache] <context>`
   - `<builder> push <reg>/<namespace>/dogu/v3/images/<name>:<dev-version>`
 - The builder is any CLI with Docker compatible `build` and `push` commands, e.g. `docker` or `podman`.
@@ -61,7 +61,7 @@ The dev registry, its access and the cluster are given as flags or environment v
 - A copy of the chart gets the references of the built images on the cluster address of the dev registry, e.g. `k3d-registry-proxy.localhost:5000/official/dogu/v3/images/nexus:<dev-version>`.
   - `dev-push` renders `mirror-patch-tpl.yaml` with the new references and merges the patches into the chart.
   - The chart is rewritten and linted before the first build.
-- The first failed build or push aborts with the image name and the exit code of the builder; images pushed before stay in the dev registry.
+- The first failed build or push aborts with the image name and the exit code of the builder; a failed build pushes nothing, images pushed before a failed push stay in the dev registry.
 - Only the images of `cldk.yaml` are built; the other images of the chart stay unchanged without any flag.
 - Replace or skip single images of `cldk.yaml` for one run, e.g. to work on one image only:
 

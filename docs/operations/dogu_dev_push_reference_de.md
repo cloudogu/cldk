@@ -1,6 +1,6 @@
 # Referenz von `cldk dogu dev-push`
 
-`cldk dogu dev-push` pusht den Arbeitsstand eines v3-Dogu-Repositorys unter einer neuen Dev-Version in eine Dev-Registry und installiert ihn in einem Cluster.
+`cldk dogu dev-push` pusht den Arbeitsstand eines Dogu-Repositorys unter einer neuen Dev-Version in eine Dev-Registry und installiert ihn in einem Cluster.
 Eine Schritt-für-Schritt-Anleitung mit den Voraussetzungen im Cluster, Beispielen mit `registry.cloudogu.com` und einem lokalen k3d-Cluster und dem Weg zurück zum regulären Dogu steht unter [Ein Dogu mit `cldk dogu dev-push` in einen Cluster bringen](deploying_a_dogu_with_dev_push_de.md).
 Das Projektverzeichnis braucht eine `cldk.yaml`, siehe [Projektkonfiguration](project_configuration_de.md#cldkyaml).
 
@@ -27,9 +27,9 @@ Die Dev-Registry, der Zugriff darauf und der Cluster werden als Flags oder Umgeb
 | `--insecure`                   | `CLDK_DEV_INSECURE`       | Dev-Registry mit nicht vertrauenswürdigem (z.B. selbstsigniertem) Zertifikat            |
 | `--kube-context <name>`        | `CLDK_DEV_KUBE_CONTEXT`   | kubeconfig-Kontext des Clusters, Standard der aktuelle Kontext                          |
 | `--kube-namespace <ns>`        | `CLDK_DEV_KUBE_NAMESPACE` | Kubernetes-Namespace des Dogus, Standard der Namespace des Kontexts, sonst `default`    |
-| `--builder <bin>`              | `CLDK_DEV_BUILDER`        | Docker-kompatibles Build-CLI, Standard `docker`                                         |
-| `--platform <os/arch>`         | `CLDK_DEV_PLATFORM`       | Plattform, für die die Images gebaut werden, wird an den Builder durchgereicht          |
-| `--no-cache`                   | `CLDK_DEV_NO_CACHE`       | Images ohne den Cache des Builders bauen, z.B. um einen sauberen Build zu erzwingen     |
+| `--builder <bin>`              | `CLDK_BUILDER`            | Docker-kompatibles Build-CLI, Standard `docker`; gemeinsam mit `release`                |
+| `--platform <os/arch>`         | `CLDK_PLATFORM`           | Plattform der Images, wird an den Builder durchgereicht; gemeinsam mit `release`        |
+| `--no-cache`                   | `CLDK_NO_CACHE`           | Images ohne den Cache des Builders bauen, z.B. um einen sauberen Build zu erzwingen     |
 | `--values <file>`              | `CLDK_DEV_VALUES`         | YAML-Datei mit Helm-Values für das Dogu, relativ zum Projektverzeichnis                 |
 | `--build-arg KEY[=VALUE]`      |                           | Build-Argument für alle Images, wiederholbar                                            |
 | `--replace-image <name>=<ref>` |                           | Image `<name>` nicht bauen, stattdessen `<ref>` ins Chart schreiben, wiederholbar       |
@@ -49,7 +49,7 @@ Die Dev-Registry, der Zugriff darauf und der Cluster werden als Flags oder Umgeb
 
 ## Images bauen
 
-- `dev-push` baut die Images der `cldk.yaml` nacheinander, sortiert nach Namen, und pusht jedes direkt nach seinem Build:
+- `dev-push` baut die Images der `cldk.yaml` nacheinander, sortiert nach Namen, und pusht sie danach in derselben Reihenfolge:
   - `<builder> build -f <dockerfile> -t <reg>/<namespace>/dogu/v3/images/<name>:<dev-version> [--target …] [--build-arg …] [--platform …] [--no-cache] <context>`
   - `<builder> push <reg>/<namespace>/dogu/v3/images/<name>:<dev-version>`
 - Der Builder ist ein beliebiges CLI mit Docker-kompatiblen Befehlen `build` und `push`, z.B. `docker` oder `podman`.
@@ -61,7 +61,7 @@ Die Dev-Registry, der Zugriff darauf und der Cluster werden als Flags oder Umgeb
 - Eine Kopie des Charts bekommt die Referenzen der gebauten Images auf der Cluster-Adresse der Dev-Registry, z.B. `k3d-registry-proxy.localhost:5000/official/dogu/v3/images/nexus:<dev-version>`.
   - `dev-push` rendert die `mirror-patch-tpl.yaml` mit den neuen Referenzen und führt die Patches ins Chart ein.
   - Das Chart wird vor dem ersten Build umgeschrieben und gelintet.
-- Der erste fehlgeschlagene Build oder Push bricht mit dem Image-Namen und dem Exit-Code des Builders ab; zuvor gepushte Images bleiben in der Dev-Registry.
+- Der erste fehlgeschlagene Build oder Push bricht mit dem Image-Namen und dem Exit-Code des Builders ab; ein fehlgeschlagener Build pusht nichts, vor einem fehlgeschlagenen Push gepushte Images bleiben in der Dev-Registry.
 - Gebaut werden nur die Images der `cldk.yaml`; die übrigen Images des Charts bleiben ohne weiteres Flag unverändert.
 - Einzelne Images der `cldk.yaml` lassen sich für einen Lauf ersetzen oder überspringen, z.B. um nur an einem Image zu arbeiten:
 
