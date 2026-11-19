@@ -1,6 +1,6 @@
 # Set these to the desired values
 ARTIFACT_ID=cldk
-VERSION=0.1.0
+VERSION=1.0.0
 GOTAG=1.27.4
 MAKEFILES_VERSION=11.2.0
 LINT_VERSION?=v2.15.0
